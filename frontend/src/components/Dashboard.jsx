@@ -1,5 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
+import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
+import L from 'leaflet';
+import 'leaflet/dist/leaflet.css';
 
 const Dashboard = ({ onLogout }) => {
   const [darkMode, setDarkMode] = useState(false);
@@ -12,10 +15,101 @@ const Dashboard = ({ onLogout }) => {
   const [selectedRequest, setSelectedRequest] = useState(null);
   const [profileData, setProfileData] = useState(null);
   const [profileLoading, setProfileLoading] = useState(true);
+  const [communityData, setCommunityData] = useState(null);
+  const [communityLoading, setCommunityLoading] = useState(true);
+  const [venuesData, setVenuesData] = useState([]);
+  const [venuesLoading, setVenuesLoading] = useState(true);
   const bottomRef = useRef(null);
 
   const firstName = localStorage.getItem('first_name') || 'Étudiant';
   const lastName = localStorage.getItem('last_name') || '';
+
+  // ─── FETCH PROFILE ───
+  const fetchProfile = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      const res = await axios.get('http://127.0.0.1:8000/profile', {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      setProfileData(res.data);
+    } catch (err) {
+      if (err.response?.status === 401) onLogout();
+      console.error('Erreur profil:', err);
+    } finally {
+      setProfileLoading(false);
+    }
+  };
+
+  // ─── DELETE REQUEST ───
+  const deleteRequest = async (requestId) => {
+    if (!window.confirm('Supprimer cette demande ?')) return;
+    try {
+      const token = localStorage.getItem('token');
+      await axios.delete(`http://127.0.0.1:8000/requests/${requestId}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      setSelectedRequest(null);
+      fetchRequests();
+      fetchProfile();
+    } catch (err) {
+      alert('Erreur lors de la suppression.');
+    }
+  };
+
+  // ─── FETCH COMMUNITY ───
+  const fetchCommunity = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      const res = await axios.get('http://127.0.0.1:8000/community', {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      setCommunityData(res.data);
+    } catch (err) {
+      console.error('Erreur communauté:', err);
+    } finally {
+      setCommunityLoading(false);
+    }
+  };
+
+  // ─── TIME AGO HELPER ───
+  const timeAgo = (dateString) => {
+    const now = new Date();
+    const date = new Date(dateString);
+    const diffMs = now - date;
+    const diffMin = Math.floor(diffMs / 60000);
+    if (diffMin < 1) return 'À l\'instant';
+    if (diffMin < 60) return `Il y a ${diffMin} minute${diffMin > 1 ? 's' : ''}`;
+    const diffH = Math.floor(diffMin / 60);
+    if (diffH < 24) return `Il y a ${diffH} heure${diffH > 1 ? 's' : ''}`;
+    const diffD = Math.floor(diffH / 24);
+    return `Il y a ${diffD} jour${diffD > 1 ? 's' : ''}`;
+  };
+
+  // ─── FETCH VENUES ───
+  const fetchVenues = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      const res = await axios.get('http://127.0.0.1:8000/venues', {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      setVenuesData(res.data);
+    } catch (err) {
+      console.error('Erreur venues:', err);
+    } finally {
+      setVenuesLoading(false);
+    }
+  };
+
+  // ─── LEAFLET ICONS ───
+  const createIcon = (color) => L.divIcon({
+    className: '',
+    html: `<div style="background:${color};width:18px;height:18px;border-radius:50%;border:3px solid white;box-shadow:0 2px 6px rgba(0,0,0,0.3);"></div>`,
+    iconSize: [24, 24],
+    iconAnchor: [12, 12],
+    popupAnchor: [0, -14],
+  });
+  const iconAvailable = createIcon('#D32F2F');
+  const iconOccupied = createIcon('#9CA3AF');
 
   useEffect(() => {
     const link = document.createElement('link');
@@ -26,6 +120,9 @@ const Dashboard = ({ onLogout }) => {
       { role: 'ai', content: `Bonjour ! Je suis votre agent IA INSAMATCH. Comment puis-je vous aider à trouver des partenaires sportifs aujourd'hui ?`, time: formatTime() }
     ]);
     fetchRequests();
+    fetchProfile();
+    fetchCommunity();
+    fetchVenues();
   }, []);
 
   useEffect(() => {
@@ -87,16 +184,16 @@ const Dashboard = ({ onLogout }) => {
 
   // ─── COLORS ───
   const c = darkMode ? {
-    bg: '#0a1628', surface: '#0f2040', surfaceBorder: '#1a3358',
-    text: '#e2e8f0', textMuted: '#64748b',
-    inputBg: '#162a4a', inputBorder: '#1e3a5f',
-    bubbleBg: '#162a4a', bubbleBorder: '#1e3a5f', bubbleText: '#e2e8f0',
+    bg: '#0a0a0a', surface: '#121212', surfaceBorder: '#2a2a2a',
+    text: '#e2e8f0', textMuted: '#888888',
+    inputBg: '#1a1a1a', inputBorder: '#333333',
+    bubbleBg: '#1a1a1a', bubbleBorder: '#333333', bubbleText: '#e2e8f0',
     userBubbleBg: '#E30613',
-    navBg: '#0c1a30', navBorder: '#152238',
-    headerBg: '#0c1a30', headerBorder: '#152238',
-    subHeaderBg: '#0f2040',
-    cardBg: '#0f2040', cardBorder: '#1a3358',
-    overlay: 'rgba(0,0,0,0.7)',
+    navBg: '#0a0a0a', navBorder: '#222222',
+    headerBg: '#0e0e0e', headerBorder: '#222222',
+    subHeaderBg: '#121212',
+    cardBg: '#141414', cardBorder: '#2a2a2a',
+    overlay: 'rgba(0,0,0,0.8)',
   } : {
     bg: '#ffffff', surface: '#ffffff', surfaceBorder: '#e5e7eb',
     text: '#111827', textMuted: '#6b7280',
@@ -114,20 +211,20 @@ const Dashboard = ({ onLogout }) => {
   const statusConfig = {
     pending: {
       label: '🔍 Recherche en cours',
-      color: '#f59e0b', bgColor: darkMode ? '#332300' : '#fffbeb',
-      borderColor: darkMode ? '#5c3d00' : '#fde68a',
+      color: '#f59e0b', bgColor: darkMode ? '#1a1400' : '#fffbeb',
+      borderColor: darkMode ? '#4d3800' : '#fde68a',
       description: "On cherche un partenaire pour toi !",
     },
     matched: {
       label: '🎯 Partenaire trouvé',
-      color: '#3b82f6', bgColor: darkMode ? '#0c1f3f' : '#eff6ff',
-      borderColor: darkMode ? '#1e40af' : '#bfdbfe',
+      color: '#3b82f6', bgColor: darkMode ? '#0a1020' : '#eff6ff',
+      borderColor: darkMode ? '#1e3a5f' : '#bfdbfe',
       description: "Un joueur est disponible, en attente de confirmation.",
     },
     accepted: {
       label: '✅ Match confirmé',
-      color: '#22c55e', bgColor: darkMode ? '#052e16' : '#f0fdf4',
-      borderColor: darkMode ? '#166534' : '#bbf7d0',
+      color: '#22c55e', bgColor: darkMode ? '#0a1a0e' : '#f0fdf4',
+      borderColor: darkMode ? '#1a3a20' : '#bbf7d0',
       description: "C'est parti, ton match est validé !",
     },
   };
@@ -162,23 +259,33 @@ const Dashboard = ({ onLogout }) => {
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
           {requests.map(req => (
-            <div key={req.id} onClick={() => setSelectedRequest(req)} style={{
+            <div key={req.id} style={{
               background: c.cardBg, border: `1px solid ${c.cardBorder}`, borderRadius: '12px',
               padding: '14px 16px', borderLeft: '3px solid #E30613', cursor: 'pointer',
-              transition: 'transform 0.15s', 
+              transition: 'transform 0.15s', position: 'relative',
             }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px' }}>
-                <span style={{ fontSize: '16px' }}>{sportEmoji(req.sportName)}</span>
-                <span style={{ fontWeight: '700', fontSize: '14px', color: c.text }}>{req.sportName}</span>
+              <div onClick={() => setSelectedRequest(req)}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px' }}>
+                  <span style={{ fontSize: '16px' }}>{sportEmoji(req.sportName)}</span>
+                  <span style={{ fontWeight: '700', fontSize: '14px', color: c.text }}>{req.sportName}</span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '3px' }}>
+                  <svg width="12" height="12" fill="none" stroke={c.textMuted} strokeWidth="2" viewBox="0 0 24 24"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+                  <span style={{ fontSize: '12px', color: c.textMuted }}>{req.location}</span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <svg width="12" height="12" fill="none" stroke={c.textMuted} strokeWidth="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                  <span style={{ fontSize: '12px', color: c.textMuted }}>{req.time}</span>
+                </div>
               </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '3px' }}>
-                <svg width="12" height="12" fill="none" stroke={c.textMuted} strokeWidth="2" viewBox="0 0 24 24"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
-                <span style={{ fontSize: '12px', color: c.textMuted }}>{req.location}</span>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <svg width="12" height="12" fill="none" stroke={c.textMuted} strokeWidth="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-                <span style={{ fontSize: '12px', color: c.textMuted }}>{req.time}</span>
-              </div>
+              {/* Bouton supprimer */}
+              <button onClick={(e) => { e.stopPropagation(); deleteRequest(req.id); }} style={{
+                position: 'absolute', top: '10px', right: '10px', background: 'none', border: 'none',
+                cursor: 'pointer', color: c.textMuted, padding: '4px', borderRadius: '6px',
+                transition: 'color 0.2s',
+              }} title="Supprimer">
+                <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+              </button>
             </div>
           ))}
         </div>
@@ -650,7 +757,288 @@ const Dashboard = ({ onLogout }) => {
               <span style={{ fontSize: '12px', color: c.textMuted }}>Créée le {formatDate(req.createdAt)}</span>
               <span style={{ fontSize: '12px', color: c.textMuted }}>ID: {req.id.substring(0, 8)}...</span>
             </div>
+
+            {/* Bouton supprimer */}
+            <button onClick={() => deleteRequest(req.id)} style={{
+              width: '100%', padding: '12px', borderRadius: '12px', marginTop: '10px',
+              border: `1.5px solid #E30613`, background: 'transparent',
+              color: '#E30613', fontWeight: '700', fontSize: '14px', cursor: 'pointer',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
+              transition: 'all 0.2s',
+            }}>
+              <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+              Supprimer cette demande
+            </button>
           </div>
+        </div>
+      </div>
+    );
+  };
+
+  // ━━━━━━━━━━━━ COMMUNITY PANEL ━━━━━━━━━━━━
+  const renderCommunityPanel = () => {
+    if (communityLoading) {
+      return (
+        <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: c.bg }}>
+          <p style={{ color: c.textMuted, fontSize: '14px' }}>Chargement de la communauté...</p>
+        </div>
+      );
+    }
+
+    if (!communityData) {
+      return (
+        <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: c.bg }}>
+          <p style={{ color: c.textMuted, fontSize: '14px' }}>Erreur lors du chargement.</p>
+        </div>
+      );
+    }
+
+    const { stats, topAthletes, recentActivity } = communityData;
+
+    const rankColors = ['#E30613', '#002157', '#8b5e3c'];
+
+    const getLevelStyle = (level) => {
+      if (level === 'Expert' || level === 'Avancé') return { bg: darkMode ? '#0a1a10' : '#f0fdf4', color: '#16a34a', border: darkMode ? '#1a3a20' : '#bbf7d0' };
+      if (level === 'Intermédiaire') return { bg: darkMode ? '#1a1014' : '#fef2f2', color: '#E30613', border: darkMode ? '#3a1a1a' : '#fecaca' };
+      return { bg: darkMode ? '#1a1a1a' : '#f3f4f6', color: '#6b7280', border: darkMode ? '#333' : '#d1d5db' };
+    };
+
+    const getSportTagStyle = (sport) => {
+      const n = (sport || '').toLowerCase();
+      if (n.includes('tennis')) return { bg: darkMode ? '#1a1014' : '#fef2f2', color: '#E30613' };
+      if (n.includes('badminton')) return { bg: darkMode ? '#1a1014' : '#fef2f2', color: '#E30613' };
+      if (n.includes('basket')) return { bg: darkMode ? '#0f1020' : '#eff6ff', color: '#2563eb' };
+      if (n.includes('foot')) return { bg: darkMode ? '#0f1020' : '#eff6ff', color: '#2563eb' };
+      if (n.includes('natation')) return { bg: darkMode ? '#0a1a1a' : '#f0fdfa', color: '#0d9488' };
+      return { bg: darkMode ? '#1a1a1a' : '#f3f4f6', color: '#6b7280' };
+    };
+
+    return (
+      <div style={{ height: '100%', overflowY: 'auto', background: c.bg }}>
+        {/* ── HERO BANNER ── */}
+        <div style={{
+          margin: '16px', borderRadius: '24px', overflow: 'hidden',
+          background: 'linear-gradient(135deg, #002157 0%, #001a44 40%, #8b1a2b 75%, #E30613 100%)',
+          padding: '28px 22px 22px',
+        }}>
+          <h2 style={{ color: 'white', fontSize: '22px', fontWeight: '800', margin: '0 0 6px' }}>Communauté INSAMATCH</h2>
+          <p style={{ color: 'rgba(255,255,255,0.7)', fontSize: '13px', margin: '0 0 20px', lineHeight: '1.5' }}>
+            Connectez-vous avec les étudiants sportifs de l'INSA Lyon
+          </p>
+
+          {/* Stats row */}
+          <div style={{ display: 'flex', gap: '10px' }}>
+            {[
+              { icon: <svg width="20" height="20" fill="none" stroke="rgba(255,255,255,0.8)" strokeWidth="1.5" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>, value: stats.totalUsers.toLocaleString(), label: 'Étudiants actifs' },
+              { icon: <svg width="20" height="20" fill="none" stroke="rgba(255,255,255,0.8)" strokeWidth="1.5" viewBox="0 0 24 24"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>, value: stats.matchesThisWeek.toLocaleString(), label: 'Matchs cette semaine' },
+              { icon: <svg width="20" height="20" fill="none" stroke="rgba(255,255,255,0.8)" strokeWidth="1.5" viewBox="0 0 24 24"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5C7 4 7 7 7 7"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5C17 4 17 7 17 7"/><path d="M4 22h16"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/></svg>, value: stats.totalSports.toString(), label: 'Sports disponibles' },
+            ].map((s, i) => (
+              <div key={i} style={{
+                flex: 1, background: 'rgba(255,255,255,0.12)', borderRadius: '16px',
+                padding: '14px 10px', textAlign: 'center',
+                border: '1px solid rgba(255,255,255,0.1)',
+              }}>
+                <div style={{ marginBottom: '6px', display: 'flex', justifyContent: 'center' }}>{s.icon}</div>
+                <p style={{ color: 'white', fontSize: '22px', fontWeight: '800', margin: '0 0 2px' }}>{s.value}</p>
+                <p style={{ color: 'rgba(255,255,255,0.65)', fontSize: '10px', fontWeight: '500', margin: 0, lineHeight: '1.3' }}>{s.label}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* ── TOP ATHLÈTES DU MOIS ── */}
+        <div style={{
+          margin: '0 16px 16px', padding: '20px',
+          background: c.surface, borderRadius: '20px',
+          border: `1px solid ${c.surfaceBorder}`,
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '18px' }}>
+            <svg width="18" height="18" fill="none" stroke="#f59e0b" strokeWidth="2" viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+            <h3 style={{ fontSize: '17px', fontWeight: '700', color: c.text, margin: 0 }}>Top Athlètes du Mois</h3>
+          </div>
+
+          {topAthletes.length === 0 ? (
+            <p style={{ color: c.textMuted, fontSize: '13px' }}>Aucun athlète pour le moment. Fais ton premier match !</p>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              {topAthletes.map((athlete, i) => {
+                const initial = athlete.firstName.charAt(0).toUpperCase();
+                const lvl = getLevelStyle(athlete.level);
+                const sportTag = getSportTagStyle(athlete.mainSport);
+                return (
+                  <div key={athlete.id} style={{
+                    display: 'flex', alignItems: 'center', gap: '12px',
+                    padding: '12px 14px', borderRadius: '14px',
+                    background: c.bg, border: `1px solid ${c.surfaceBorder}`,
+                  }}>
+                    {/* Avatar + rank badge */}
+                    <div style={{ position: 'relative', flexShrink: 0 }}>
+                      <div style={{
+                        width: '44px', height: '44px', borderRadius: '50%',
+                        background: `linear-gradient(135deg, ${rankColors[i] || '#6b7280'}, ${i === 0 ? '#8b1a2b' : i === 1 ? '#001a44' : '#6b5e3c'})`,
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        color: 'white', fontSize: '18px', fontWeight: '700',
+                      }}>{initial}</div>
+                      {i < 3 && (
+                        <div style={{
+                          position: 'absolute', top: '-4px', right: '-4px',
+                          width: '20px', height: '20px', borderRadius: '50%',
+                          background: rankColors[i], color: 'white',
+                          fontSize: '11px', fontWeight: '800',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          border: `2px solid ${c.bg}`,
+                        }}>{i + 1}</div>
+                      )}
+                    </div>
+
+                    {/* Info */}
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <p style={{ fontSize: '14px', fontWeight: '700', color: c.text, margin: '0 0 2px' }}>
+                        {athlete.firstName} {athlete.lastName}
+                      </p>
+                      <p style={{ fontSize: '11px', color: c.textMuted, margin: '0 0 4px' }}>
+                        {athlete.department} {athlete.classGroup}
+                      </p>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        {athlete.mainSport && (
+                          <span style={{
+                            fontSize: '10px', fontWeight: '700', padding: '2px 8px', borderRadius: '6px',
+                            background: sportTag.bg, color: sportTag.color,
+                          }}>{athlete.mainSport}</span>
+                        )}
+                        <span style={{ fontSize: '11px', color: c.textMuted }}>{athlete.totalMatches} matchs</span>
+                      </div>
+                    </div>
+
+                    {/* Level badge */}
+                    {athlete.level && (
+                      <span style={{
+                        fontSize: '11px', fontWeight: '600', padding: '4px 10px', borderRadius: '20px',
+                        background: lvl.bg, color: lvl.color, border: `1px solid ${lvl.border}`,
+                        flexShrink: 0,
+                      }}>{athlete.level}</span>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* ── ACTIVITÉ RÉCENTE ── */}
+        <div style={{
+          margin: '0 16px 100px', padding: '20px',
+          background: c.surface, borderRadius: '20px',
+          border: `1px solid ${c.surfaceBorder}`,
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '18px' }}>
+            <svg width="18" height="18" fill="none" stroke="#E30613" strokeWidth="2" viewBox="0 0 24 24"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+            <h3 style={{ fontSize: '17px', fontWeight: '700', color: c.text, margin: 0 }}>Activité Récente</h3>
+          </div>
+
+          {recentActivity.length === 0 ? (
+            <p style={{ color: c.textMuted, fontSize: '13px' }}>Aucune activité récente.</p>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              {recentActivity.map((activity, i) => (
+                <div key={i} style={{
+                  padding: '14px 16px', borderRadius: '14px',
+                  background: c.bg, borderLeft: '3px solid #E30613',
+                  border: `1px solid ${c.surfaceBorder}`,
+                }}>
+                  <p style={{ fontSize: '13px', color: c.text, margin: '0 0 4px', lineHeight: '1.5' }}>
+                    <span style={{ color: '#E30613', fontWeight: '700' }}>{activity.userName}</span>
+                    {' '}{activity.message}
+                  </p>
+                  <p style={{ fontSize: '11px', color: c.textMuted, margin: 0 }}>{timeAgo(activity.date)}</p>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  // ━━━━━━━━━━━━ LIEUX PANEL (MAP) ━━━━━━━━━━━━
+  const renderLieuxPanel = () => {
+    if (venuesLoading) {
+      return (
+        <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: c.bg }}>
+          <p style={{ color: c.textMuted, fontSize: '14px' }}>Chargement de la carte...</p>
+        </div>
+      );
+    }
+
+    return (
+      <div style={{ height: '100%', width: '100%', position: 'relative', display: 'flex', flexDirection: 'column', background: c.bg }}>
+        {/* Header simple */}
+        <div style={{ padding: '20px', borderBottom: `1px solid ${c.surfaceBorder}`, background: c.surface, zIndex: 10 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <svg width="20" height="20" fill="none" stroke="#E30613" strokeWidth="2" viewBox="0 0 24 24"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+            <h2 style={{ fontSize: '18px', fontWeight: '700', color: c.text, margin: 0 }}>Plan du Campus</h2>
+          </div>
+          <p style={{ color: c.textMuted, fontSize: '13px', margin: '4px 0 0' }}>Disponibilité des installations en temps réel</p>
+        </div>
+
+        {/* Conteneur de la carte */}
+        <div style={{ flex: 1, position: 'relative' }}>
+          {/* Légende flottante */}
+          <div style={{
+            position: 'absolute', top: '16px', right: '16px', zIndex: 1000,
+            background: c.surface, padding: '12px 16px', borderRadius: '12px',
+            boxShadow: '0 4px 12px rgba(0,0,0,0.15)', border: `1px solid ${c.surfaceBorder}`
+          }}>
+            <p style={{ fontSize: '14px', fontWeight: '700', color: c.text, margin: '0 0 10px' }}>Légende</p>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+              <div style={{ width: '12px', height: '12px', borderRadius: '50%', background: '#D32F2F' }}></div>
+              <span style={{ fontSize: '13px', color: c.text }}>Disponible</span>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <div style={{ width: '12px', height: '12px', borderRadius: '50%', background: '#9CA3AF' }}></div>
+              <span style={{ fontSize: '13px', color: c.text }}>Occupé</span>
+            </div>
+          </div>
+
+          <MapContainer 
+            center={[45.7842, 4.8805]} 
+            zoom={16} 
+            zoomControl={false}
+            style={{ width: '100%', height: '100%', zIndex: 1 }}
+          >
+            <TileLayer
+              attribution='&copy; OpenStreetMap &copy; CARTO'
+              url={darkMode 
+                ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png' 
+                : 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png'}
+              maxZoom={20}
+            />
+
+            {venuesData.map(venue => (
+              <Marker 
+                key={venue.id} 
+                position={[venue.latitude, venue.longitude]} 
+                icon={venue.available ? iconAvailable : iconOccupied}
+              >
+                <Popup className={darkMode ? 'dark-popup' : ''}>
+                  <div style={{ padding: '4px 0' }}>
+                    <h3 style={{ margin: '0 0 6px', fontSize: '14px', fontWeight: '700', color: '#111827' }}>{venue.name}</h3>
+                    <p style={{ margin: '0 0 4px', fontSize: '12px', color: '#4B5563' }}>
+                      <strong>Type:</strong> {venue.type}
+                    </p>
+                    {venue.sports && venue.sports.length > 0 && (
+                      <p style={{ margin: '0 0 4px', fontSize: '12px', color: '#4B5563' }}>
+                        <strong>Sports:</strong> {venue.sports.join(', ')}
+                      </p>
+                    )}
+                    <p style={{ margin: 0, fontSize: '12px', fontWeight: '700', color: venue.available ? '#D32F2F' : '#9CA3AF' }}>
+                      {venue.available ? '● Disponible' : '● Occupé'}
+                    </p>
+                  </div>
+                </Popup>
+              </Marker>
+            ))}
+          </MapContainer>
         </div>
       </div>
     );
@@ -660,20 +1048,8 @@ const Dashboard = ({ onLogout }) => {
   const renderMobileContent = () => {
     if (activeTab === 'ia') return renderChat();
     if (activeTab === 'matchs') return renderMatchsPage();
-    if (activeTab === 'lieux') return (
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '40px', color: c.textMuted }}>
-        <svg width="48" height="48" fill="none" stroke={c.textMuted} strokeWidth="1.5" viewBox="0 0 24 24"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
-        <p style={{ fontSize: '16px', fontWeight: '600', marginTop: '16px', color: c.text }}>Lieux</p>
-        <p style={{ fontSize: '13px', textAlign: 'center' }}>La carte des terrains du campus sera bientôt disponible.</p>
-      </div>
-    );
-    if (activeTab === 'communaute') return (
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '40px', color: c.textMuted }}>
-        <svg width="48" height="48" fill="none" stroke={c.textMuted} strokeWidth="1.5" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-        <p style={{ fontSize: '16px', fontWeight: '600', marginTop: '16px', color: c.text }}>Communauté</p>
-        <p style={{ fontSize: '13px', textAlign: 'center' }}>Rejoins la communauté sportive de l'INSA bientôt !</p>
-      </div>
-    );
+    if (activeTab === 'lieux') return renderLieuxPanel();
+    if (activeTab === 'communaute') return renderCommunityPanel();
     if (activeTab === 'profil') return renderProfilePanel();
     return null;
   };
@@ -701,13 +1077,13 @@ const Dashboard = ({ onLogout }) => {
         .card-anim { animation: fadeIn 0.35s ease both; }
         ::-webkit-scrollbar { width: 5px; }
         ::-webkit-scrollbar-track { background: transparent; }
-        ::-webkit-scrollbar-thumb { background: ${darkMode ? '#1e3a5f' : '#d1d5db'}; border-radius: 10px; }
+        ::-webkit-scrollbar-thumb { background: ${darkMode ? '#333' : '#d1d5db'}; border-radius: 10px; }
         .desktop-sidebar { display: none !important; }
         .desktop-chat { display: none !important; }
         @media (min-width: 900px) {
           .desktop-sidebar { display: flex !important; }
-          .desktop-chat { display: flex !important; }
-          .mobile-content { display: none !important; }
+          .desktop-chat { display: ${activeTab === 'ia' ? 'flex' : 'none'} !important; }
+          .mobile-content { display: ${activeTab === 'ia' ? 'none' : 'flex'} !important; }
           .hamburger-btn { display: none !important; }
         }
       `}</style>
@@ -743,10 +1119,12 @@ const Dashboard = ({ onLogout }) => {
           </div>
         </div>
 
-        {/* Desktop: Right sidebar */}
-        <div className="desktop-sidebar" style={{ width: '280px', flexShrink: 0, background: c.surface, overflowY: 'auto', flexDirection: 'column' }}>
-          {renderProfilePanel()}
-        </div>
+        {/* Desktop: Right sidebar — only show on 'ia' tab */}
+        {activeTab === 'ia' && (
+          <div className="desktop-sidebar" style={{ width: '280px', flexShrink: 0, background: c.surface, overflowY: 'auto', flexDirection: 'column' }}>
+            {renderProfilePanel()}
+          </div>
+        )}
       </div>
 
       {/* BOTTOM NAV (Mobile) */}
