@@ -703,13 +703,37 @@ const Dashboard = ({ onLogout }) => {
                 <span style={{ fontSize: '12px', fontWeight: '600', color: c.textMuted, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Lieu</span>
               </div>
               <p style={{ fontSize: '15px', fontWeight: '600', color: c.text, margin: 0 }}>{req.location}</p>
-              {/* Mini map placeholder */}
-              <div style={{ marginTop: '10px', borderRadius: '10px', overflow: 'hidden', height: '120px', background: darkMode ? '#162a4a' : '#e5e7eb', display: 'flex', alignItems: 'center', justifyContent: 'center', border: `1px solid ${c.cardBorder}` }}>
-                <div style={{ textAlign: 'center', color: c.textMuted }}>
-                  <svg width="24" height="24" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24" style={{ margin: '0 auto 4px', display: 'block' }}><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
-                  <span style={{ fontSize: '11px' }}>Carte du campus</span>
-                </div>
-              </div>
+              {/* Mini map */}
+              {(() => {
+                const venue = venuesData.find(v => v.name.toLowerCase().includes(req.location.toLowerCase()) || req.location.toLowerCase().includes(v.name.toLowerCase()));
+                if (venue && venue.latitude && venue.longitude) {
+                  return (
+                    <div style={{ marginTop: '10px', borderRadius: '10px', overflow: 'hidden', height: '120px', border: `1px solid ${c.cardBorder}` }}>
+                      <MapContainer 
+                        center={[venue.latitude, venue.longitude]} 
+                        zoom={16} 
+                        zoomControl={false}
+                        dragging={false}
+                        scrollWheelZoom={false}
+                        doubleClickZoom={false}
+                        touchZoom={false}
+                        style={{ height: '100%', width: '100%', zIndex: 1 }}
+                      >
+                        <TileLayer url={darkMode ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png' : 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png'} />
+                        <Marker position={[venue.latitude, venue.longitude]} icon={iconAvailable} />
+                      </MapContainer>
+                    </div>
+                  );
+                }
+                return (
+                  <div style={{ marginTop: '10px', borderRadius: '10px', overflow: 'hidden', height: '120px', background: darkMode ? '#162a4a' : '#e5e7eb', display: 'flex', alignItems: 'center', justifyContent: 'center', border: `1px solid ${c.cardBorder}` }}>
+                    <div style={{ textAlign: 'center', color: c.textMuted }}>
+                      <svg width="24" height="24" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24" style={{ margin: '0 auto 4px', display: 'block' }}><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+                      <span style={{ fontSize: '11px' }}>Carte indisponible</span>
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
 
             {/* Créneau */}
