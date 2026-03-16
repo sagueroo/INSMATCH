@@ -1,0 +1,147 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String         @id @default(uuid()) @db.Uuid
+  first_name    String
+  last_name     String
+  email         String         @unique
+  password_hash String
+  department    String
+  class_group   String
+  phone         String?
+  created_at    DateTime       @default(now())
+  
+  // Relations
+  matchRequests MatchRequest[]
+  userSports    UserSport[]
+  userRewards   UserReward[]
+
+  @@map("users")
+}
+
+model Sport {
+  id   String @id @default(uuid()) @db.Uuid
+  name String @unique
+  
+  // Relations
+  venues        VenueSport[]
+  matchRequests MatchRequest[]
+  userSports    UserSport[]
+
+  @@map("sports")
+}
+
+model Venue {
+  id        String  @id @default(uuid()) @db.Uuid
+  name      String
+  is_active Boolean @default(true)
+  
+  // Relations
+  sports  VenueSport[]
+  matches Match[]
+
+  @@map("venues")
+}
+
+// Table de jonction (N:N explicite) entre Venues (Terrains) et Sports
+model VenueSport {
+  venue_id String @db.Uuid
+  sport_id String @db.Uuid
+  
+  venue Venue @relation(fields: [venue_id], references: [id], onDelete: Cascade)
+  sport Sport @relation(fields: [sport_id], references: [id], onDelete: Cascade)
+
+  @@id([venue_id, sport_id])
+  @@map("venue_sports")
+}
+
+model MatchRequest {
+  id                 String   @id @default(uuid()) @db.Uuid
+  user_id            String   @db.Uuid
+  sport_id           String   @db.Uuid
+  availability_notes String?  @db.Text
+  status             String   @default("pending")
+  created_at         DateTime @default(now())
+
+  // Ajout du créneau final pour la V2 (Emploi du temps)
+  proposed_time      DateTime?
+
+  // Relations
+  user         User    @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  sport        Sport   @relation(fields: [sport_id], references: [id], onDelete: Restrict)
+  matchesAsReqA Match[] @relation("MatchesAsReqA")
+  matchesAsReqB Match[] @relation("MatchesAsReqB")
+
+  @@map("match_requests")
+}
+
+model Match {
+  id           String   @id @default(uuid()) @db.Uuid
+  request_a_id String   @db.Uuid
+  request_b_id String   @db.Uuid
+  venue_id     String   @db.Uuid
+  start_time   DateTime
+  end_time     DateTime
+  status       String   @default("scheduled")
+
+  // Relations
+  request_a MatchRequest @relation("MatchesAsReqA", fields: [request_a_id], references: [id])
+  request_b MatchRequest @relation("MatchesAsReqB", fields: [request_b_id], references: [id])
+  venue     Venue        @relation(fields: [venue_id], references: [id])
+
+  @@map("matches")
+}
+
+// ── NOUVELLES TABLES POUR LE PROFIL INTERACTIF ──
+
+// Suivi des sports pratiqués par un user (niveau + compteur)
+model UserSport {
+  id          String @id @default(uuid()) @db.Uuid
+  user_id     String @db.Uuid
+  sport_id    String @db.Uuid
+  level       String @default("Débutant") // Débutant, Intermédiaire, Avancé
+  match_count Int    @default(0)
+
+  user  User  @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  sport Sport @relation(fields: [sport_id], references: [id], onDelete: Cascade)
+
+  @@unique([user_id, sport_id])
+  @@map("user_sports")
+}
+
+// Catalogue de récompenses
+model Reward {
+  id          String @id @default(uuid()) @db.Uuid
+  name        String @unique
+  description String
+  condition   String  // ex: "matches_total:1", "matches_total:10", "partners:20", "matches_total:50"
+  icon        String  @default("trophy")
+
+  userRewards UserReward[]
+
+  @@map("rewards")
+}
+
+// Récompenses débloquées par un user
+model UserReward {
+  id          String   @id @default(uuid()) @db.Uuid
+  user_id     String   @db.Uuid
+  reward_id   String   @db.Uuid
+  unlocked_at DateTime @default(now())
+
+  user   User   @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  reward Reward @relation(fields: [reward_id], references: [id], onDelete: Cascade)
+
+  @@unique([user_id, reward_id])
+  @@map("user_rewards")
+}

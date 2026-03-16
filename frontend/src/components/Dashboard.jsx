@@ -1,0 +1,771 @@
+import { useState, useEffect, useRef } from 'react';
+import axios from 'axios';
+
+const Dashboard = ({ onLogout }) => {
+  const [darkMode, setDarkMode] = useState(false);
+  const [activeTab, setActiveTab] = useState('ia');
+  const [messages, setMessages] = useState([]);
+  const [input, setInput] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const [requests, setRequests] = useState([]);
+  const [requestsLoading, setRequestsLoading] = useState(true);
+  const [selectedRequest, setSelectedRequest] = useState(null);
+  const [profileData, setProfileData] = useState(null);
+  const [profileLoading, setProfileLoading] = useState(true);
+  const bottomRef = useRef(null);
+
+  const firstName = localStorage.getItem('first_name') || 'Étudiant';
+  const lastName = localStorage.getItem('last_name') || '';
+
+  useEffect(() => {
+    const link = document.createElement('link');
+    link.href = 'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Playfair+Display:ital,wght@1,700&display=swap';
+    link.rel = 'stylesheet';
+    document.head.appendChild(link);
+    setMessages([
+      { role: 'ai', content: `Bonjour ! Je suis votre agent IA INSAMATCH. Comment puis-je vous aider à trouver des partenaires sportifs aujourd'hui ?`, time: formatTime() }
+    ]);
+    fetchRequests();
+  }, []);
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages, isLoading]);
+
+  const fetchRequests = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      const res = await axios.get('http://127.0.0.1:8000/requests', {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      setRequests(res.data);
+    } catch (err) {
+      if (err.response?.status === 401) onLogout();
+    } finally {
+      setRequestsLoading(false);
+    }
+  };
+
+  const sendMessage = async (e) => {
+    e?.preventDefault();
+    if (!input.trim() || isLoading) return;
+    const userMsg = { role: 'user', content: input, time: formatTime() };
+    const newMessages = [...messages, userMsg];
+    setMessages(newMessages);
+    setInput('');
+    setIsLoading(true);
+    try {
+      const token = localStorage.getItem('token');
+      const conversationHistory = newMessages.map(msg => ({
+        role: msg.role === 'ai' ? 'assistant' : msg.role,
+        content: msg.content
+      }));
+      const response = await axios.post('http://127.0.0.1:8000/chat/',
+        { history: conversationHistory },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      setMessages(prev => [...prev, { role: 'ai', content: response.data.reply, time: formatTime() }]);
+      fetchRequests();
+      fetchProfile();
+    } catch (error) {
+      if (error.response?.status === 401) onLogout();
+      else setMessages(prev => [...prev, { role: 'ai', content: 'Erreur de connexion au serveur.', time: formatTime() }]);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const formatTime = () => {
+    const now = new Date();
+    return now.getHours().toString().padStart(2, '0') + ':' + now.getMinutes().toString().padStart(2, '0');
+  };
+
+  const formatDate = (dateString) => {
+    const d = new Date(dateString);
+    return new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }).format(d);
+  };
+
+  // ─── COLORS ───
+  const c = darkMode ? {
+    bg: '#0a1628', surface: '#0f2040', surfaceBorder: '#1a3358',
+    text: '#e2e8f0', textMuted: '#64748b',
+    inputBg: '#162a4a', inputBorder: '#1e3a5f',
+    bubbleBg: '#162a4a', bubbleBorder: '#1e3a5f', bubbleText: '#e2e8f0',
+    userBubbleBg: '#E30613',
+    navBg: '#0c1a30', navBorder: '#152238',
+    headerBg: '#0c1a30', headerBorder: '#152238',
+    subHeaderBg: '#0f2040',
+    cardBg: '#0f2040', cardBorder: '#1a3358',
+    overlay: 'rgba(0,0,0,0.7)',
+  } : {
+    bg: '#ffffff', surface: '#ffffff', surfaceBorder: '#e5e7eb',
+    text: '#111827', textMuted: '#6b7280',
+    inputBg: '#f3f4f6', inputBorder: '#e5e7eb',
+    bubbleBg: '#ffffff', bubbleBorder: '#e5e7eb', bubbleText: '#111827',
+    userBubbleBg: '#E30613',
+    navBg: '#ffffff', navBorder: '#e5e7eb',
+    headerBg: '#ffffff', headerBorder: '#e5e7eb',
+    subHeaderBg: '#ffffff',
+    cardBg: '#ffffff', cardBorder: '#e5e7eb',
+    overlay: 'rgba(0,0,0,0.45)',
+  };
+
+  // ─── STATUS CONFIG ───
+  const statusConfig = {
+    pending: {
+      label: '🔍 Recherche en cours',
+      color: '#f59e0b', bgColor: darkMode ? '#332300' : '#fffbeb',
+      borderColor: darkMode ? '#5c3d00' : '#fde68a',
+      description: "On cherche un partenaire pour toi !",
+    },
+    matched: {
+      label: '🎯 Partenaire trouvé',
+      color: '#3b82f6', bgColor: darkMode ? '#0c1f3f' : '#eff6ff',
+      borderColor: darkMode ? '#1e40af' : '#bfdbfe',
+      description: "Un joueur est disponible, en attente de confirmation.",
+    },
+    accepted: {
+      label: '✅ Match confirmé',
+      color: '#22c55e', bgColor: darkMode ? '#052e16' : '#f0fdf4',
+      borderColor: darkMode ? '#166534' : '#bbf7d0',
+      description: "C'est parti, ton match est validé !",
+    },
+  };
+
+  // ─── SPORT EMOJIS ───
+  const sportEmoji = (name) => {
+    const n = name?.toLowerCase() || '';
+    if (n.includes('tennis')) return '🎾';
+    if (n.includes('foot')) return '⚽';
+    if (n.includes('basket')) return '🏀';
+    if (n.includes('badminton')) return '🏸';
+    if (n.includes('volley')) return '🏐';
+    if (n.includes('rugby')) return '🏉';
+    if (n.includes('hand')) return '🤾';
+    if (n.includes('ping') || n.includes('table')) return '🏓';
+    return '🏅';
+  };
+
+  // ━━━━━━━━━━━━ PANELS ━━━━━━━━━━━━
+
+  // Search Panel (desktop left sidebar)
+  const renderSearchPanel = () => (
+    <div style={{ padding: '20px', height: '100%', overflowY: 'auto' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '20px' }}>
+        <svg width="20" height="20" fill="none" stroke={c.text} strokeWidth="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+        <h2 style={{ fontSize: '18px', fontWeight: '700', color: c.text, margin: 0 }}>Mes Recherches</h2>
+      </div>
+      {requestsLoading ? (
+        <p style={{ color: c.textMuted, fontSize: '13px' }}>Chargement...</p>
+      ) : requests.length === 0 ? (
+        <p style={{ color: c.textMuted, fontSize: '13px' }}>Aucune recherche pour le moment.</p>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+          {requests.map(req => (
+            <div key={req.id} onClick={() => setSelectedRequest(req)} style={{
+              background: c.cardBg, border: `1px solid ${c.cardBorder}`, borderRadius: '12px',
+              padding: '14px 16px', borderLeft: '3px solid #E30613', cursor: 'pointer',
+              transition: 'transform 0.15s', 
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px' }}>
+                <span style={{ fontSize: '16px' }}>{sportEmoji(req.sportName)}</span>
+                <span style={{ fontWeight: '700', fontSize: '14px', color: c.text }}>{req.sportName}</span>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '3px' }}>
+                <svg width="12" height="12" fill="none" stroke={c.textMuted} strokeWidth="2" viewBox="0 0 24 24"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+                <span style={{ fontSize: '12px', color: c.textMuted }}>{req.location}</span>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <svg width="12" height="12" fill="none" stroke={c.textMuted} strokeWidth="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                <span style={{ fontSize: '12px', color: c.textMuted }}>{req.time}</span>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+
+  // Profile Panel (Dynamic from API)
+  const renderProfilePanel = () => {
+    if (profileLoading) {
+      return (
+        <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: c.bg }}>
+          <p style={{ color: c.textMuted, fontSize: '14px' }}>Chargement du profil...</p>
+        </div>
+      );
+    }
+
+    if (!profileData) {
+      return (
+        <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: c.bg }}>
+          <p style={{ color: c.textMuted, fontSize: '14px' }}>Erreur lors du chargement du profil.</p>
+        </div>
+      );
+    }
+
+    const { user, stats, sports, rewards, recentMatches } = profileData;
+    const email = user.email;
+
+    const getLevelColor = (level) => {
+      if (level === 'Avancé') return '#002157';
+      if (level === 'Intermédiaire') return '#E30613';
+      return '#64748b'; // Débutant
+    };
+
+    const sportTagColor = (name) => {
+      const n = name.toLowerCase();
+      if (n.includes('tennis')) return { bg: '#fef2f2', color: '#E30613', border: '#fecaca' };
+      if (n.includes('badminton')) return { bg: '#fef2f2', color: '#E30613', border: '#fecaca' };
+      if (n.includes('natation')) return { bg: '#fef2f2', color: '#E30613', border: '#fecaca' };
+      if (n.includes('foot')) return { bg: '#eff6ff', color: '#1d4ed8', border: '#bfdbfe' };
+      return { bg: '#f3f4f6', color: '#374151', border: '#d1d5db' };
+    };
+
+    return (
+      <div style={{ height: '100%', overflowY: 'auto', background: c.bg }}>
+        {/* ── HERO CARD ── */}
+        <div style={{
+          margin: '16px', borderRadius: '24px', overflow: 'hidden',
+          background: 'linear-gradient(135deg, #002157 0%, #001a44 40%, #8b1a2b 75%, #E30613 100%)',
+          padding: '32px 24px 24px', textAlign: 'center', position: 'relative',
+        }}>
+          {/* Avatar */}
+          <div style={{
+            width: '90px', height: '90px', borderRadius: '50%', margin: '0 auto 14px',
+            background: 'rgba(255,255,255,0.15)', backdropFilter: 'blur(10px)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            border: '3px solid rgba(255,255,255,0.25)',
+          }}>
+            <svg width="44" height="44" fill="none" stroke="rgba(255,255,255,0.85)" strokeWidth="1.5" viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+          </div>
+          <h2 style={{ color: 'white', fontSize: '22px', fontWeight: '700', margin: '0 0 4px' }}>{user.first_name} {user.last_name}</h2>
+          <p style={{ color: 'rgba(255,255,255,0.75)', fontSize: '14px', margin: '0 0 2px' }}>{user.class_group}</p>
+          <p style={{ color: 'rgba(255,255,255,0.55)', fontSize: '12px', margin: '0 0 18px' }}>{user.department}</p>
+
+          {/* Modifier button */}
+          <button style={{
+            background: 'white', border: 'none', borderRadius: '20px',
+            padding: '8px 20px', fontSize: '13px', fontWeight: '600', color: '#002157',
+            cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '6px',
+            fontFamily: "'Inter', sans-serif",
+          }}>
+            <svg width="14" height="14" fill="none" stroke="#002157" strokeWidth="2" viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+            Modifier
+          </button>
+
+          {/* Stats row */}
+          <div style={{ display: 'flex', gap: '10px', marginTop: '22px' }}>
+            {[
+              { icon: <svg width="22" height="22" fill="none" stroke="rgba(255,255,255,0.8)" strokeWidth="1.5" viewBox="0 0 24 24"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5C7 4 7 7 7 7"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5C17 4 17 7 17 7"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20 17 22"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/></svg>, value: stats.totalMatches.toString(), label: 'Matchs joués' },
+              { icon: <svg width="22" height="22" fill="none" stroke="rgba(255,255,255,0.8)" strokeWidth="1.5" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><circle cx="12" cy="12" r="8"/><line x1="12" y1="1" x2="12" y2="4"/><line x1="12" y1="20" x2="12" y2="23"/></svg>, value: stats.totalSports.toString(), label: 'Sports pratiqués' },
+              { icon: <svg width="22" height="22" fill="none" stroke="rgba(255,255,255,0.8)" strokeWidth="1.5" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>, value: stats.totalPartners.toString(), label: 'Partenaires' },
+            ].map((s, i) => (
+              <div key={i} style={{
+                flex: 1, background: 'rgba(255,255,255,0.12)', borderRadius: '16px',
+                padding: '14px 8px', textAlign: 'center', backdropFilter: 'blur(6px)',
+              }}>
+                <div style={{ marginBottom: '6px', display: 'flex', justifyContent: 'center' }}>{s.icon}</div>
+                <p style={{ color: 'white', fontSize: '22px', fontWeight: '800', margin: '0 0 2px' }}>{s.value}</p>
+                <p style={{ color: 'rgba(255,255,255,0.65)', fontSize: '10px', fontWeight: '500', margin: 0, lineHeight: '1.3' }}>{s.label}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* ── INFORMATIONS ── */}
+        <div style={{ margin: '0 16px 16px', background: c.cardBg, border: `1px solid ${c.cardBorder}`, borderRadius: '20px', padding: '20px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '18px' }}>
+            <svg width="18" height="18" fill="none" stroke="#E30613" strokeWidth="2" viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+            <h3 style={{ fontSize: '17px', fontWeight: '700', color: c.text, margin: 0 }}>Informations</h3>
+          </div>
+          {[
+            { icon: <svg width="16" height="16" fill="none" stroke={c.textMuted} strokeWidth="2" viewBox="0 0 24 24"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>, label: 'Email', value: email },
+            { icon: <svg width="16" height="16" fill="none" stroke={c.textMuted} strokeWidth="2" viewBox="0 0 24 24"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6A19.79 19.79 0 0 1 2.12 4.18 2 2 0 0 1 4 2h3a2 2 0 0 1 2 1.72c.13.81.36 1.6.68 2.34a2 2 0 0 1-.45 2.11L8.09 9.31a16 16 0 0 0 6 6l1.14-1.14a2 2 0 0 1 2.11-.45c.74.32 1.53.55 2.34.68A2 2 0 0 1 22 16.92z"/></svg>, label: 'Téléphone', value: user.phone || 'Non renseigné' },
+            { icon: <svg width="16" height="16" fill="none" stroke={c.textMuted} strokeWidth="2" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>, label: 'Inscription', value: formatDate(user.created_at) },
+            { icon: <svg width="16" height="16" fill="none" stroke={c.textMuted} strokeWidth="2" viewBox="0 0 24 24"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>, label: 'Localisation', value: 'Campus INSA Lyon' },
+          ].map((info, i) => (
+            <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: '12px', marginBottom: i < 3 ? '16px' : 0 }}>
+              <div style={{ marginTop: '2px', flexShrink: 0 }}>{info.icon}</div>
+              <div>
+                <p style={{ fontSize: '12px', color: c.textMuted, margin: '0 0 2px' }}>{info.label}</p>
+                <p style={{ fontSize: '14px', color: c.text, fontWeight: '600', margin: 0 }}>{info.value}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* ── MES SPORTS ── */}
+        <div style={{ margin: '0 16px 16px', background: c.cardBg, border: `1px solid ${c.cardBorder}`, borderRadius: '20px', padding: '20px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '18px' }}>
+            <svg width="18" height="18" fill="none" stroke="#E30613" strokeWidth="2" viewBox="0 0 24 24"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+            <h3 style={{ fontSize: '17px', fontWeight: '700', color: c.text, margin: 0 }}>Mes Sports</h3>
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            {sports.length === 0 ? (
+              <p style={{ color: c.textMuted, fontSize: '13px' }}>Aucun sport pratiqué pour le moment.</p>
+            ) : null}
+            {sports.map((sport, i) => {
+              const maxMatches = 20; // Objectif de base
+              const levelColor = getLevelColor(sport.level);
+              return (
+              <div key={i} style={{
+                background: c.bg, border: `1px solid ${c.cardBorder}`, borderRadius: '14px',
+                padding: '14px 16px', display: 'flex', alignItems: 'center', gap: '12px',
+              }}>
+                {/* Sport icon */}
+                <div style={{
+                  width: '44px', height: '44px', borderRadius: '50%', flexShrink: 0,
+                  background: darkMode ? '#1a2744' : '#fef2f2',
+                  border: `1px solid ${darkMode ? '#253a5c' : '#fecaca'}`,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                }}>
+                  <svg width="20" height="20" fill="none" stroke="#E30613" strokeWidth="1.5" viewBox="0 0 24 24"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5C7 4 7 7 7 7"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5C17 4 17 7 17 7"/><path d="M4 22h16"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/></svg>
+                </div>
+                {/* Info */}
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+                    <span style={{ fontSize: '14px', fontWeight: '700', color: c.text }}>{sport.name}</span>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span style={{
+                      fontSize: '10px', fontWeight: '700', padding: '2px 8px', borderRadius: '6px',
+                      background: levelColor === '#002157' ? (darkMode ? '#0c1f3f' : '#eff6ff') : levelColor === '#E30613' ? (darkMode ? '#2a0a0e' : '#fef2f2') : (darkMode ? '#1a2030' : '#f3f4f6'),
+                      color: levelColor,
+                    }}>{sport.level}</span>
+                    <span style={{ fontSize: '12px', color: c.textMuted }}>{sport.matchCount} matchs</span>
+                  </div>
+                </div>
+                {/* Progress */}
+                <div style={{ width: '80px', textAlign: 'right', flexShrink: 0 }}>
+                  <div style={{ height: '6px', borderRadius: '3px', background: darkMode ? '#1a2744' : '#e5e7eb', marginBottom: '4px', overflow: 'hidden' }}>
+                    <div style={{ width: `${Math.min((sport.matchCount / maxMatches) * 100, 100)}%`, height: '100%', borderRadius: '3px', background: '#E30613', transition: 'width 0.5s ease' }} />
+                  </div>
+                  <span style={{ fontSize: '11px', color: c.textMuted, fontWeight: '600' }}>{sport.matchCount}/{maxMatches}</span>
+                </div>
+              </div>
+            )})}
+          </div>
+        </div>
+
+        {/* ── RÉCOMPENSES ── */}
+        <div style={{ margin: '0 16px 16px', background: c.cardBg, border: `1px solid ${c.cardBorder}`, borderRadius: '20px', padding: '20px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '18px' }}>
+            <svg width="18" height="18" fill="none" stroke="#E30613" strokeWidth="2" viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+            <h3 style={{ fontSize: '17px', fontWeight: '700', color: c.text, margin: 0 }}>Récompenses</h3>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+            {rewards.map((r, i) => (
+              <div key={i} style={{
+                background: r.unlocked ? (darkMode ? '#2a0a0e' : '#fef2f2') : (darkMode ? '#111827' : '#f9fafb'),
+                border: `1px solid ${r.unlocked ? (darkMode ? '#5c1a1a' : '#fecaca') : c.cardBorder}`,
+                borderRadius: '14px', padding: '14px', opacity: r.unlocked ? 1 : 0.5,
+              }}>
+                <svg width="24" height="24" fill="none" stroke={r.unlocked ? '#E30613' : c.textMuted} strokeWidth="1.5" viewBox="0 0 24 24" style={{ marginBottom: '8px' }}>
+                  <path d="M6 9H4.5a2.5 2.5 0 0 1 0-5C7 4 7 7 7 7"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5C17 4 17 7 17 7"/><path d="M4 22h16"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/>
+                </svg>
+                <p style={{ fontSize: '13px', fontWeight: '700', color: r.unlocked ? c.text : c.textMuted, margin: '0 0 2px' }}>{r.name}</p>
+                <p style={{ fontSize: '11px', color: c.textMuted, margin: 0, lineHeight: '1.4' }}>{r.description}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* ── MATCHS RÉCENTS ── */}
+        <div style={{ margin: '0 16px 16px', background: c.cardBg, border: `1px solid ${c.cardBorder}`, borderRadius: '20px', padding: '20px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '18px' }}>
+            <svg width="18" height="18" fill="none" stroke="#E30613" strokeWidth="2" viewBox="0 0 24 24"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+            <h3 style={{ fontSize: '17px', fontWeight: '700', color: c.text, margin: 0 }}>Matchs Récents</h3>
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            {recentMatches.length === 0 ? (
+              <p style={{ color: c.textMuted, fontSize: '13px' }}>Aucun match à afficher.</p>
+            ) : null}
+            {recentMatches.map((m, i) => {
+              const tag = sportTagColor(m.sport);
+              return (
+                <div key={i} style={{
+                  border: `1px solid ${c.cardBorder}`, borderRadius: '14px',
+                  padding: '14px 16px', background: c.bg,
+                }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '6px' }}>
+                    <div>
+                      <p style={{ fontSize: '15px', fontWeight: '700', color: c.text, margin: '0 0 3px' }}>{m.sport}</p>
+                      <p style={{ fontSize: '13px', color: c.textMuted, margin: 0 }}>avec {m.partnerName}</p>
+                    </div>
+                    <span style={{
+                      fontSize: '11px', fontWeight: '600', padding: '4px 12px', borderRadius: '20px',
+                      background: tag.bg, color: tag.color, border: `1px solid ${tag.border}`,
+                    }}>{m.sport}</span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '8px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', color: c.textMuted }}>
+                      <svg width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                      {formatDate(m.date)}
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', color: c.textMuted }}>
+                      <svg width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+                      {m.venue}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* ── DÉCONNEXION ── */}
+        <div style={{ margin: '0 16px 24px' }}>
+          <button onClick={onLogout} style={{
+            width: '100%', padding: '14px', borderRadius: '14px',
+            border: `1.5px solid ${c.cardBorder}`, background: 'transparent',
+            color: c.text, fontWeight: '600', fontSize: '14px', cursor: 'pointer',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
+            fontFamily: "'Inter', sans-serif",
+          }}>
+            <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+            Déconnexion
+          </button>
+        </div>
+      </div>
+    );
+  };
+
+  // ━━━━━━━━━━━━ CHAT ━━━━━━━━━━━━
+  const renderChat = () => (
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', borderBottom: `1px solid ${c.surfaceBorder}`, background: c.subHeaderBg, flexShrink: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <button className="hamburger-btn" style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '4px', display: 'flex', lineHeight: 0 }}>
+            <svg width="22" height="22" fill="none" stroke={c.text} strokeWidth="2" viewBox="0 0 24 24"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+          </button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <svg width="18" height="18" fill="none" stroke={c.text} strokeWidth="2" viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+            <span style={{ fontWeight: '600', fontSize: '16px', color: c.text }}>Agent IA</span>
+          </div>
+        </div>
+        <button style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '4px', lineHeight: 0 }}>
+          <svg width="22" height="22" fill="none" stroke={c.text} strokeWidth="2" viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+        </button>
+      </div>
+
+      <div style={{ flex: 1, overflowY: 'auto', padding: '16px', display: 'flex', flexDirection: 'column', gap: '12px', background: c.bg }}>
+        {messages.map((msg, i) => (
+          <div key={i} style={{ display: 'flex', flexDirection: 'column', alignItems: msg.role === 'user' ? 'flex-end' : 'flex-start', maxWidth: '85%', alignSelf: msg.role === 'user' ? 'flex-end' : 'flex-start' }}>
+            <div style={{ padding: '14px 16px', borderRadius: msg.role === 'user' ? '18px 18px 4px 18px' : '18px 18px 18px 4px', background: msg.role === 'user' ? c.userBubbleBg : c.bubbleBg, color: msg.role === 'user' ? 'white' : c.bubbleText, border: msg.role === 'user' ? 'none' : `1px solid ${c.bubbleBorder}`, fontSize: '14px', lineHeight: '1.6', boxShadow: msg.role === 'user' ? '0 2px 8px rgba(227,6,19,0.2)' : 'none' }}>
+              {msg.content}
+            </div>
+            <span style={{ fontSize: '11px', color: c.textMuted, marginTop: '4px', padding: '0 4px' }}>{msg.time}</span>
+          </div>
+        ))}
+        {isLoading && (
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', maxWidth: '85%' }}>
+            <div style={{ padding: '14px 18px', borderRadius: '18px 18px 18px 4px', background: c.bubbleBg, border: `1px solid ${c.bubbleBorder}`, display: 'flex', gap: '5px', alignItems: 'center' }}>
+              {[0, 1, 2].map(i => (<div key={i} className="typing-dot" style={{ width: '7px', height: '7px', borderRadius: '50%', background: darkMode ? '#64748b' : '#002157', animationDelay: `${i * 0.2}s` }} />))}
+            </div>
+          </div>
+        )}
+        <div ref={bottomRef} />
+      </div>
+
+      <div style={{ padding: '12px 16px', flexShrink: 0, background: c.subHeaderBg, borderTop: `1px solid ${c.surfaceBorder}` }}>
+        <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+          <input type="text" value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && sendMessage(e)} placeholder="Décrivez votre recherche..." disabled={isLoading} style={{ flex: 1, height: '48px', padding: '0 16px', border: `1.5px solid ${c.inputBorder}`, borderRadius: '24px', fontSize: '14px', fontFamily: "'Inter', sans-serif", color: c.text, background: c.inputBg, outline: 'none', transition: 'border-color 0.2s' }} onFocus={e => e.target.style.borderColor = '#E30613'} onBlur={e => e.target.style.borderColor = c.inputBorder} />
+          <button onClick={sendMessage} disabled={isLoading || !input.trim()} style={{ width: '48px', height: '48px', flexShrink: 0, background: '#E30613', border: 'none', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: !input.trim() || isLoading ? 'not-allowed' : 'pointer', opacity: !input.trim() || isLoading ? 0.5 : 1, transition: 'opacity 0.2s', boxShadow: '0 4px 12px rgba(227,6,19,0.3)' }}>
+            <svg width="20" height="20" fill="none" stroke="white" strokeWidth="2" viewBox="0 0 24 24"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+
+  // ━━━━━━━━━━━━ MATCHS PAGE ━━━━━━━━━━━━
+  const renderMatchsPage = () => (
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
+      {/* Header */}
+      <div style={{ padding: '16px 20px', borderBottom: `1px solid ${c.surfaceBorder}`, background: c.subHeaderBg, flexShrink: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <svg width="22" height="22" fill="none" stroke="#E30613" strokeWidth="2" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+          <h2 style={{ margin: 0, fontSize: '18px', fontWeight: '700', color: c.text }}>Mes Matchs</h2>
+          <span style={{ fontSize: '12px', color: c.textMuted, background: darkMode ? '#1a2744' : '#f3f4f6', padding: '3px 10px', borderRadius: '20px', fontWeight: '600' }}>{requests.length}</span>
+        </div>
+      </div>
+
+      {/* Content */}
+      <div style={{ flex: 1, overflowY: 'auto', padding: '16px', background: c.bg }}>
+        {requestsLoading ? (
+          <div style={{ textAlign: 'center', padding: '60px 0', color: c.textMuted }}>
+            <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#E30613" strokeWidth="2.5" style={{ animation: 'spin 1s linear infinite', margin: '0 auto', display: 'block' }}><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
+            <p style={{ fontSize: '14px', marginTop: '12px' }}>Chargement...</p>
+          </div>
+        ) : requests.length === 0 ? (
+          <div style={{ textAlign: 'center', padding: '60px 20px' }}>
+            <div style={{ width: '80px', height: '80px', borderRadius: '50%', background: darkMode ? '#1a2744' : '#f3f4f6', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px', fontSize: '36px' }}>🏅</div>
+            <h3 style={{ fontSize: '18px', color: c.text, fontWeight: '700', margin: '0 0 8px' }}>Aucun match en cours</h3>
+            <p style={{ fontSize: '14px', color: c.textMuted, margin: 0, lineHeight: '1.5' }}>Discute avec l'Agent IA pour lancer ta première recherche de partenaire !</p>
+          </div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+            {requests.map((req, index) => {
+              const st = statusConfig[req.status] || statusConfig.pending;
+              return (
+                <div key={req.id} className="card-anim" onClick={() => setSelectedRequest(req)} style={{
+                  background: c.cardBg, border: `1px solid ${c.cardBorder}`, borderRadius: '16px',
+                  padding: '18px', cursor: 'pointer', transition: 'transform 0.15s, box-shadow 0.15s',
+                  animationDelay: `${index * 0.05}s`,
+                }}>
+                  {/* Status badge */}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+                    <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', background: st.bgColor, color: st.color, padding: '5px 12px', borderRadius: '20px', fontSize: '12px', fontWeight: '600', border: `1px solid ${st.borderColor}` }}>
+                      {st.label}
+                    </div>
+                    <span style={{ fontSize: '11px', color: c.textMuted }}>{formatDate(req.createdAt)}</span>
+                  </div>
+
+                  {/* Sport + infos */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                    <div style={{ width: '52px', height: '52px', borderRadius: '14px', background: darkMode ? '#1a2744' : '#fef2f2', border: `1px solid ${darkMode ? '#253a5c' : '#fecaca'}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '26px', flexShrink: 0 }}>
+                      {sportEmoji(req.sportName)}
+                    </div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <h3 style={{ fontSize: '16px', fontWeight: '700', color: c.text, margin: '0 0 6px' }}>{req.sportName}</h3>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '12.5px', color: c.textMuted }}>
+                          <svg width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+                          {req.location}
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '12.5px', color: c.textMuted }}>
+                          <svg width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                          {req.time}
+                        </div>
+                      </div>
+                    </div>
+                    <svg width="20" height="20" fill="none" stroke={c.textMuted} strokeWidth="2" viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+
+  // ━━━━━━━━━━━━ POPUP DETAIL ━━━━━━━━━━━━
+  const renderDetailPopup = () => {
+    if (!selectedRequest) return null;
+    const req = selectedRequest;
+    const st = statusConfig[req.status] || statusConfig.pending;
+
+    return (
+      <div onClick={() => setSelectedRequest(null)} style={{
+        position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+        background: c.overlay, zIndex: 1000,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        padding: '20px', animation: 'fadeIn 0.2s ease',
+      }}>
+        <div onClick={e => e.stopPropagation()} style={{
+          background: c.surface, borderRadius: '24px', width: '100%', maxWidth: '440px',
+          maxHeight: '85vh', overflowY: 'auto',
+          border: `1px solid ${c.surfaceBorder}`,
+          boxShadow: '0 24px 80px rgba(0,0,0,0.2)',
+        }}>
+          {/* Popup Header */}
+          <div style={{ padding: '20px 20px 0', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+            <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', background: st.bgColor, color: st.color, padding: '6px 14px', borderRadius: '20px', fontSize: '13px', fontWeight: '600', border: `1px solid ${st.borderColor}` }}>
+              {st.label}
+            </div>
+            <button onClick={() => setSelectedRequest(null)} style={{ background: darkMode ? '#1a2744' : '#f3f4f6', border: 'none', borderRadius: '50%', width: '36px', height: '36px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <svg width="18" height="18" fill="none" stroke={c.text} strokeWidth="2" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+          </div>
+
+          {/* Sport Title */}
+          <div style={{ padding: '20px', textAlign: 'center' }}>
+            <div style={{ fontSize: '48px', marginBottom: '8px' }}>{sportEmoji(req.sportName)}</div>
+            <h2 style={{ fontSize: '24px', fontWeight: '800', color: c.text, margin: '0 0 4px' }}>{req.sportName}</h2>
+            <p style={{ fontSize: '13px', color: c.textMuted, margin: 0 }}>{st.description}</p>
+          </div>
+
+          {/* Details Grid */}
+          <div style={{ padding: '0 20px 20px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            {/* Lieu */}
+            <div style={{ background: darkMode ? '#0a1628' : '#f9fafb', borderRadius: '14px', padding: '16px', border: `1px solid ${c.cardBorder}` }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+                <svg width="18" height="18" fill="none" stroke="#E30613" strokeWidth="2" viewBox="0 0 24 24"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+                <span style={{ fontSize: '12px', fontWeight: '600', color: c.textMuted, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Lieu</span>
+              </div>
+              <p style={{ fontSize: '15px', fontWeight: '600', color: c.text, margin: 0 }}>{req.location}</p>
+              {/* Mini map placeholder */}
+              <div style={{ marginTop: '10px', borderRadius: '10px', overflow: 'hidden', height: '120px', background: darkMode ? '#162a4a' : '#e5e7eb', display: 'flex', alignItems: 'center', justifyContent: 'center', border: `1px solid ${c.cardBorder}` }}>
+                <div style={{ textAlign: 'center', color: c.textMuted }}>
+                  <svg width="24" height="24" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24" style={{ margin: '0 auto 4px', display: 'block' }}><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+                  <span style={{ fontSize: '11px' }}>Carte du campus</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Créneau */}
+            <div style={{ background: darkMode ? '#0a1628' : '#f9fafb', borderRadius: '14px', padding: '16px', border: `1px solid ${c.cardBorder}` }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+                <svg width="18" height="18" fill="none" stroke="#E30613" strokeWidth="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                <span style={{ fontSize: '12px', fontWeight: '600', color: c.textMuted, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Créneau</span>
+              </div>
+              <p style={{ fontSize: '15px', fontWeight: '600', color: c.text, margin: 0 }}>{req.time}</p>
+            </div>
+
+            {/* Partenaire (si status = matched) */}
+            {req.status === 'matched' && (
+              <div style={{ background: darkMode ? '#0a1628' : '#f9fafb', borderRadius: '14px', padding: '16px', border: `1px solid ${c.cardBorder}` }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' }}>
+                  <svg width="18" height="18" fill="none" stroke="#3b82f6" strokeWidth="2" viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                  <span style={{ fontSize: '12px', fontWeight: '600', color: c.textMuted, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Partenaire trouvé</span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <div style={{ width: '44px', height: '44px', borderRadius: '50%', background: '#002157', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                    <svg width="22" height="22" fill="none" stroke="rgba(255,255,255,0.7)" strokeWidth="1.5" viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                  </div>
+                  <div>
+                    <p style={{ fontSize: '15px', fontWeight: '600', color: c.text, margin: 0 }}>Joueur trouvé</p>
+                    <p style={{ fontSize: '12px', color: c.textMuted, margin: '2px 0 0' }}>En attente de ta confirmation</p>
+                  </div>
+                </div>
+
+                {/* Accept / Reject buttons */}
+                <div style={{ display: 'flex', gap: '10px', marginTop: '14px' }}>
+                  <button style={{ flex: 1, padding: '12px', borderRadius: '12px', border: 'none', background: '#22c55e', color: 'white', fontWeight: '700', fontSize: '14px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
+                    <svg width="16" height="16" fill="none" stroke="white" strokeWidth="2.5" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+                    Accepter
+                  </button>
+                  <button style={{ flex: 1, padding: '12px', borderRadius: '12px', border: `1.5px solid ${c.cardBorder}`, background: 'transparent', color: c.text, fontWeight: '700', fontSize: '14px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
+                    <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                    Refuser
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Infos supplémentaires */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 4px' }}>
+              <span style={{ fontSize: '12px', color: c.textMuted }}>Créée le {formatDate(req.createdAt)}</span>
+              <span style={{ fontSize: '12px', color: c.textMuted }}>ID: {req.id.substring(0, 8)}...</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  // ━━━━━━━━━━━━ MOBILE TAB CONTENT ━━━━━━━━━━━━
+  const renderMobileContent = () => {
+    if (activeTab === 'ia') return renderChat();
+    if (activeTab === 'matchs') return renderMatchsPage();
+    if (activeTab === 'lieux') return (
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '40px', color: c.textMuted }}>
+        <svg width="48" height="48" fill="none" stroke={c.textMuted} strokeWidth="1.5" viewBox="0 0 24 24"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+        <p style={{ fontSize: '16px', fontWeight: '600', marginTop: '16px', color: c.text }}>Lieux</p>
+        <p style={{ fontSize: '13px', textAlign: 'center' }}>La carte des terrains du campus sera bientôt disponible.</p>
+      </div>
+    );
+    if (activeTab === 'communaute') return (
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '40px', color: c.textMuted }}>
+        <svg width="48" height="48" fill="none" stroke={c.textMuted} strokeWidth="1.5" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+        <p style={{ fontSize: '16px', fontWeight: '600', marginTop: '16px', color: c.text }}>Communauté</p>
+        <p style={{ fontSize: '13px', textAlign: 'center' }}>Rejoins la communauté sportive de l'INSA bientôt !</p>
+      </div>
+    );
+    if (activeTab === 'profil') return renderProfilePanel();
+    return null;
+  };
+
+  // ━━━━━━━━━━━━ BOTTOM NAV ━━━━━━━━━━━━
+  const bottomNavItems = [
+    { id: 'ia', label: 'IA', icon: (a) => <svg width="22" height="22" fill="none" stroke={a ? '#E30613' : c.textMuted} strokeWidth="2" viewBox="0 0 24 24"><path d="M12 2a2 2 0 0 1 2 2c0 .74-.4 1.39-1 1.73V7h1a7 7 0 0 1 7 7h1a1 1 0 0 1 1 1v3a1 1 0 0 1-1 1h-1.27A7 7 0 0 1 14 23h-4a7 7 0 0 1-6.73-4H2a1 1 0 0 1-1-1v-3a1 1 0 0 1 1-1h1a7 7 0 0 1 7-7h1V5.73A2 2 0 0 1 12 2z"/><path d="M9 17l1.5-2.5L12 17l1.5-2.5L15 17"/></svg> },
+    { id: 'matchs', label: 'Matchs', icon: (a) => <svg width="22" height="22" fill="none" stroke={a ? '#E30613' : c.textMuted} strokeWidth="2" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg> },
+    { id: 'lieux', label: 'Lieux', icon: (a) => <svg width="22" height="22" fill="none" stroke={a ? '#E30613' : c.textMuted} strokeWidth="2" viewBox="0 0 24 24"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg> },
+    { id: 'communaute', label: 'Communauté', icon: (a) => <svg width="22" height="22" fill="none" stroke={a ? '#E30613' : c.textMuted} strokeWidth="2" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg> },
+    { id: 'profil', label: 'Profil', icon: (a) => <svg width="22" height="22" fill="none" stroke={a ? '#E30613' : c.textMuted} strokeWidth="2" viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg> },
+  ];
+
+  // ━━━━━━━━━━━━ RENDER ━━━━━━━━━━━━
+  return (
+    <div style={{ width: '100%', height: '100vh', display: 'flex', flexDirection: 'column', fontFamily: "'Inter', sans-serif", background: c.bg, color: c.text, overflow: 'hidden' }}>
+      <style>{`
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        @keyframes blink { 0%,80%,100%{opacity:0} 40%{opacity:1} }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        @keyframes fadeIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:translateY(0); } }
+        .typing-dot { animation: blink 1.4s infinite both; }
+        .typing-dot:nth-child(2) { animation-delay: 0.2s; }
+        .typing-dot:nth-child(3) { animation-delay: 0.4s; }
+        .card-anim { animation: fadeIn 0.35s ease both; }
+        ::-webkit-scrollbar { width: 5px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: ${darkMode ? '#1e3a5f' : '#d1d5db'}; border-radius: 10px; }
+        .desktop-sidebar { display: none !important; }
+        .desktop-chat { display: none !important; }
+        @media (min-width: 900px) {
+          .desktop-sidebar { display: flex !important; }
+          .desktop-chat { display: flex !important; }
+          .mobile-content { display: none !important; }
+          .hamburger-btn { display: none !important; }
+        }
+      `}</style>
+
+      {/* TOP BAR */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 20px', flexShrink: 0, background: c.headerBg, borderBottom: `1px solid ${c.headerBorder}` }}>
+        <h1 style={{ margin: 0, fontSize: '22px', fontWeight: '800', letterSpacing: '-0.02em' }}>
+          <span style={{ color: '#E30613', fontFamily: "'Playfair Display', serif", fontStyle: 'italic' }}>INSA</span>
+          <span style={{ color: '#002157' }}>MATCH</span>
+        </h1>
+        <button onClick={() => setDarkMode(!darkMode)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '6px', color: c.textMuted, lineHeight: 0 }}>
+          {darkMode
+            ? <svg width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+            : <svg width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+          }
+        </button>
+      </div>
+
+      {/* MAIN CONTENT */}
+      <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
+        {/* Desktop: Left sidebar */}
+        <div className="desktop-sidebar" style={{ width: '260px', flexShrink: 0, borderRight: `1px solid ${c.surfaceBorder}`, background: c.surface, overflowY: 'auto', flexDirection: 'column' }}>
+          {renderSearchPanel()}
+        </div>
+
+        {/* Center */}
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', borderRight: `1px solid ${c.surfaceBorder}`, overflow: 'hidden', minWidth: 0 }}>
+          <div className="desktop-chat" style={{ display: 'none', flex: 1, flexDirection: 'column', overflow: 'hidden' }}>
+            {renderChat()}
+          </div>
+          <div className="mobile-content" style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+            {renderMobileContent()}
+          </div>
+        </div>
+
+        {/* Desktop: Right sidebar */}
+        <div className="desktop-sidebar" style={{ width: '280px', flexShrink: 0, background: c.surface, overflowY: 'auto', flexDirection: 'column' }}>
+          {renderProfilePanel()}
+        </div>
+      </div>
+
+      {/* BOTTOM NAV (Mobile) */}
+      <div className="mobile-bottom-nav" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-around', padding: '8px 0 12px', flexShrink: 0, background: c.navBg, borderTop: `1px solid ${c.navBorder}` }}>
+        {bottomNavItems.map(item => {
+          const active = activeTab === item.id;
+          return (
+            <button key={item.id} onClick={() => setActiveTab(item.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px', padding: '4px 8px', color: active ? '#E30613' : c.textMuted }}>
+              {item.icon(active)}
+              <span style={{ fontSize: '10px', fontWeight: active ? '700' : '500' }}>{item.label}</span>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* POPUP */}
+      {renderDetailPopup()}
+    </div>
+  );
+};
+
+export default Dashboard;
