@@ -33,6 +33,25 @@ app.get('/', (req, res) => {
     res.json({ message: "API INSMATCH (Node.js) opérationnelle !" });
 });
 
+// --- SYNCHRONISATION EMPLOI DU TEMPS ---
+const cron = require('node-cron');
+const { syncGroupTimetable } = require('./utils/syncTimetables');
+
+// Liste initiale des groupes à synchroniser
+const groupsToSync = [
+  { promo: 3, groupe: 1 },
+  { promo: 3, groupe: 4 },
+];
+
+// CRON JOB : Tous les jours à 03:00 du matin
+cron.schedule('0 3 * * *', async () => {
+    console.log('🔄 Lancement de la synchronisation nocturne des EDT...');
+    for (const group of groupsToSync) {
+        await syncGroupTimetable(group.promo, group.groupe);
+    }
+    console.log('🏁 Synchronisation terminée !');
+});
+
 // --- LANCEMENT DU SERVEUR ---
 const PORT = process.env.PORT || 8000;
 app.listen(PORT, () => {

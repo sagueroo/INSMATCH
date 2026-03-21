@@ -148,3 +148,18 @@ model UserReward {
   @@unique([user_id, reward_id])
   @@map("user_rewards")
 }
+
+// ── NOUVEAU: GESTION DE L'EMPLOI DU TEMPS ──
+
+model ClassEvent {
+  id          String   @id @default(uuid()) @db.Uuid
+  department  String   // ex: "3" (pour 3TC)
+  class_group String   // ex: "1" (pour Gr1)
+  title       String   // Nom du cours
+  start_time  DateTime
+  end_time    DateTime
+  location    String?  // Salle (optionnel)
+
+  @@index([department, class_group])
+  @@map("class_events")
+}
