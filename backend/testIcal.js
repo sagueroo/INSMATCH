@@ -1,3 +1,4 @@
+require('dotenv').config();
 const { syncGroupTimetable } = require('./utils/syncTimetables');
 const { findCommonFreeTime } = require('./utils/timetableMatch');
 
@@ -10,8 +11,8 @@ async function runTest() {
   
   console.log('\n--- TEST DE COMPARAISON DES HORAIRES ---');
   
-  // 2. On définit une date pour la recherche (par exemple, la date actuelle)
-  const searchDate = new Date();
+  // 2. On définit une date pour la recherche (le 1er avril 2026)
+  const searchDate = new Date('2026-04-01');
   
   // Si on est le week-end ou tard le soir, on peut ajouter quelques jours pour tester :
   // searchDate.setDate(searchDate.getDate() + 2);
