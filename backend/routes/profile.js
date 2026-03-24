@@ -21,6 +21,9 @@ router.get('/', getCurrentUser, async (req, res) => {
         // ── 1. Infos de base ──
         const user = req.user;
 
+        // ── Obtenir tous les sports disponibles ──
+        const availableSports = await prisma.sport.findMany({ select: { id: true, name: true } });
+
         // ── 2. Mes Sports ──
         const userSports = await prisma.userSport.findMany({
             where: { user_id: userId },
@@ -131,13 +134,14 @@ router.get('/', getCurrentUser, async (req, res) => {
                 totalPartners,
             },
             sports: userSports.map(us => ({
-                id: us.id,
+                id: us.sport_id,
                 name: us.sport.name,
                 level: us.level,
                 matchCount: us.match_count,
             })),
             rewards,
             recentMatches,
+            availableSports,
         });
 
     } catch (error) {
@@ -148,17 +152,82 @@ router.get('/', getCurrentUser, async (req, res) => {
 
 /**
  * PUT /profile
- * Met à jour le profil (phone pour l'instant)
+ * Met à jour le profil (informations et sports favoris)
  */
 router.put('/', getCurrentUser, async (req, res) => {
     try {
-        const { phone } = req.body;
-        const updated = await prisma.user.update({
-            where: { id: req.user.id },
-            data: { phone },
-            select: { id: true, phone: true },
+        const { first_name, last_name, email, phone, class_group, department, sports } = req.body;
+        const userId = req.user.id;
+
+        // Validation basique
+        if (!first_name || !last_name || !email) {
+            return res.status(400).json({ detail: "Nom, prénom et email sont requis." });
+        }
+
+        // Mettre à jour l'utilisateur de base
+        const updatedUser = await prisma.user.update({
+            where: { id: userId },
+            data: { 
+                first_name, 
+                last_name, 
+                email, 
+                phone, 
+                class_group, 
+                department 
+            },
         });
-        res.json(updated);
+
+        // Mettre à jour les sports si fournis
+        if (Array.isArray(sports)) {
+            // Transaction pour gérer les sports
+            await prisma.$transaction(async (tx) => {
+                // 1. Récupérer les sports existants
+                const existingUserSports = await tx.userSport.findMany({
+                    where: { user_id: userId }
+                });
+
+                const incomingSportIds = sports.map(s => s.sport_id);
+                
+                // 2. Supprimer les sports qui ne sont plus dans la liste
+                const sportsToDelete = existingUserSports.filter(
+                    eus => !incomingSportIds.includes(eus.sport_id)
+                );
+                
+                if (sportsToDelete.length > 0) {
+                    await tx.userSport.deleteMany({
+                        where: {
+                            id: { in: sportsToDelete.map(s => s.id) }
+                        }
+                    });
+                }
+
+                // 3. Ajouter ou mettre à jour les sports
+                for (const sport of sports) {
+                    const existing = existingUserSports.find(eus => eus.sport_id === sport.sport_id);
+                    if (existing) {
+                        // Mettre à jour si le niveau a changé
+                        if (existing.level !== sport.level) {
+                            await tx.userSport.update({
+                                where: { id: existing.id },
+                                data: { level: sport.level }
+                            });
+                        }
+                    } else {
+                        // Créer un nouveau sport
+                        await tx.userSport.create({
+                            data: {
+                                user_id: userId,
+                                sport_id: sport.sport_id,
+                                level: sport.level,
+                                match_count: 0 // Commence à 0
+                            }
+                        });
+                    }
+                }
+            });
+        }
+
+        res.json({ success: true, user: updatedUser });
     } catch (error) {
         console.error("Erreur Update Profile:", error);
         res.status(500).json({ detail: "Impossible de mettre à jour le profil." });
