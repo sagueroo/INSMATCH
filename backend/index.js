@@ -8,7 +8,7 @@ const requestsRouter = require('./routes/requests');
 const profileRouter = require('./routes/profile');
 const communityRouter = require('./routes/community');
 const venuesRouter = require('./routes/venues');
-const scheduleRouter = require('./routes/schedule');
+const timetableRouter = require('./routes/timetable');
 
 const app = express();
 
@@ -28,12 +28,26 @@ app.use('/requests', requestsRouter);
 app.use('/profile', profileRouter);
 app.use('/community', communityRouter);
 app.use('/venues', venuesRouter);
-app.use('/schedule', scheduleRouter);
+app.use('/timetable', timetableRouter);
 
 // --- ROUTE DE TEST ---
 app.get('/', (req, res) => {
     res.json({ message: "API INSMATCH (Node.js) opérationnelle !" });
 });
+
+// --- SYNCHRONISATION EMPLOI DU TEMPS ---
+const cron = require('node-cron');
+const { syncAllGroups } = require('./utils/syncTimetables');
+
+// CRON JOB : Tous les soirs à 03:00 — fenêtre glissante J-1 supprimé / J+7 ajouté
+cron.schedule('0 3 * * *', async () => {
+    console.log('🔄 Lancement de la synchronisation nocturne des EDT (fenêtre glissante)...');
+    await syncAllGroups(new Date()); // passe la date du jour pour le mode sliding
+    console.log('🏁 Synchronisation terminée !');
+});
+
+// Sync initiale au démarrage du serveur (full sync, sans sliding)
+syncAllGroups().catch(err => console.error('Erreur sync initiale:', err.message));
 
 // --- LANCEMENT DU SERVEUR ---
 const PORT = process.env.PORT || 8000;

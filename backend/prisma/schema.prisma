@@ -2,7 +2,8 @@
 // learn more about it in the docs: https://pris.ly/d/prisma-schema
 
 generator client {
-  provider = "prisma-client-js"
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "windows"]
 }
 
 datasource db {
@@ -147,4 +148,21 @@ model UserReward {
 
   @@unique([user_id, reward_id])
   @@map("user_rewards")
+}
+
+// ── NOUVEAU: GESTION DE L'EMPLOI DU TEMPS ──
+
+model ClassEvent {
+  id          String   @id @default(uuid()) @db.Uuid
+  department  String   // ex: "3" (pour 3TC)
+  class_group String   // ex: "1" (pour Gr1)
+  title       String   // Nom du cours
+  start_time  DateTime
+  end_time    DateTime
+  location    String?  // Salle (optionnel)
+  professor   String?  // Trigramme(s) du/des professeur(s), ex: "CGO,AHI"
+  subject     String?  // Code matière 3 lettres, ex: "TSN"
+
+  @@index([department, class_group])
+  @@map("class_events")
 }
