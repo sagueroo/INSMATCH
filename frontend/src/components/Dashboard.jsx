@@ -1232,7 +1232,7 @@ const Dashboard = ({ onLogout }) => {
                     <div style={{ width: '42px', height: '42px', borderRadius: '50%', background: 'linear-gradient(135deg, #002157, #E30613)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: '700', fontSize: '16px', flexShrink: 0 }}>{u.firstName.charAt(0)}</div>
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <p style={{ fontSize: '14px', fontWeight: '700', color: c.text, margin: '0 0 2px' }}>{u.firstName} {u.lastName}</p>
-                      <p style={{ fontSize: '12px', color: c.textMuted, margin: 0 }}>{u.department} · {u.classGroup}</p>
+                      <p style={{ fontSize: '12px', color: c.textMuted, margin: 0 }}>{u.department}ème année · Groupe {u.classGroup}</p>
                     </div>
                     {u.mainSport && <span style={{ fontSize: '11px', fontWeight: '600', padding: '3px 10px', borderRadius: '8px', background: darkMode ? '#1a2744' : '#eff6ff', color: '#2563eb', flexShrink: 0 }}>{u.mainSport}</span>}
                   </div>
@@ -1411,8 +1411,8 @@ const Dashboard = ({ onLogout }) => {
                       <div style={{ textAlign: 'center' }}>
                         <div style={{ width: '80px', height: '80px', borderRadius: '50%', margin: '0 auto 12px', background: 'rgba(255,255,255,0.15)', backdropFilter: 'blur(10px)', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '3px solid rgba(255,255,255,0.25)', fontSize: '32px', fontWeight: '700', color: 'white' }}>{up.user.first_name.charAt(0)}</div>
                         <h2 style={{ color: 'white', fontSize: '20px', fontWeight: '700', margin: '0 0 4px' }}>{up.user.first_name} {up.user.last_name}</h2>
-                        <p style={{ color: 'rgba(255,255,255,0.75)', fontSize: '13px', margin: '0 0 2px' }}>{up.user.class_group}</p>
-                        <p style={{ color: 'rgba(255,255,255,0.55)', fontSize: '12px', margin: '0 0 16px' }}>{up.user.department}</p>
+                        <p style={{ color: 'rgba(255,255,255,0.75)', fontSize: '14px', margin: '0 0 2px' }}>{up.user.department}ème année de TC</p>
+                        <p style={{ color: 'rgba(255,255,255,0.55)', fontSize: '12px', margin: '0 0 18px' }}>Groupe {up.user.class_group}</p>
                       </div>
                       <div style={{ display: 'flex', gap: '8px' }}>
                         {[{ v: up.stats.totalMatches, l: 'Matchs joués' }, { v: up.stats.totalSports, l: 'Sports' }, { v: up.stats.totalPartners, l: 'Partenaires' }].map((s, i) => (
@@ -1710,6 +1710,7 @@ const Dashboard = ({ onLogout }) => {
       {/* POPUP */}
       {renderDetailPopup()}
       {renderMatchsDrawer()}
+      {renderEditProfileModal()}
     </div>
   );
 };
