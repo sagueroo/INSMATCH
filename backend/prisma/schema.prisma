@@ -160,6 +160,8 @@ model ClassEvent {
   start_time  DateTime
   end_time    DateTime
   location    String?  // Salle (optionnel)
+  professor   String?  // Trigramme(s) du/des professeur(s), ex: "CGO,AHI"
+  subject     String?  // Code matière 3 lettres, ex: "TSN"
 
   @@index([department, class_group])
   @@map("class_events")

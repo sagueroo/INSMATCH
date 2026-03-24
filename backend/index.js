@@ -8,6 +8,7 @@ const requestsRouter = require('./routes/requests');
 const profileRouter = require('./routes/profile');
 const communityRouter = require('./routes/community');
 const venuesRouter = require('./routes/venues');
+const timetableRouter = require('./routes/timetable');
 
 const app = express();
 
@@ -27,6 +28,7 @@ app.use('/requests', requestsRouter);
 app.use('/profile', profileRouter);
 app.use('/community', communityRouter);
 app.use('/venues', venuesRouter);
+app.use('/timetable', timetableRouter);
 
 // --- ROUTE DE TEST ---
 app.get('/', (req, res) => {
@@ -35,22 +37,17 @@ app.get('/', (req, res) => {
 
 // --- SYNCHRONISATION EMPLOI DU TEMPS ---
 const cron = require('node-cron');
-const { syncGroupTimetable } = require('./utils/syncTimetables');
+const { syncAllGroups } = require('./utils/syncTimetables');
 
-// Liste initiale des groupes à synchroniser
-const groupsToSync = [
-  { promo: 3, groupe: 1 },
-  { promo: 3, groupe: 4 },
-];
-
-// CRON JOB : Tous les jours à 03:00 du matin
+// CRON JOB : Tous les soirs à 03:00 — fenêtre glissante J-1 supprimé / J+7 ajouté
 cron.schedule('0 3 * * *', async () => {
-    console.log('🔄 Lancement de la synchronisation nocturne des EDT...');
-    for (const group of groupsToSync) {
-        await syncGroupTimetable(group.promo, group.groupe);
-    }
+    console.log('🔄 Lancement de la synchronisation nocturne des EDT (fenêtre glissante)...');
+    await syncAllGroups(new Date()); // passe la date du jour pour le mode sliding
     console.log('🏁 Synchronisation terminée !');
 });
+
+// Sync initiale au démarrage du serveur (full sync, sans sliding)
+syncAllGroups().catch(err => console.error('Erreur sync initiale:', err.message));
 
 // --- LANCEMENT DU SERVEUR ---
 const PORT = process.env.PORT || 8000;

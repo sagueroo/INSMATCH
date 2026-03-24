@@ -2,85 +2,132 @@ const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
 
 /**
- * Merge an array of intervals [ {start: Date, end: Date}, ... ] 
- * into a non-overlapping array of intervals.
+ * Merges overlapping or adjacent intervals.
  */
 function mergeIntervals(intervals) {
   if (!intervals.length) return [];
-  
-  // Sort by start time
   intervals.sort((a, b) => a.start - b.start);
-  
-  const merged = [intervals[0]];
+  const merged = [{ ...intervals[0] }];
   for (let i = 1; i < intervals.length; i++) {
-    const current = intervals[i];
-    const lastMerged = merged[merged.length - 1];
-    
-    if (current.start <= lastMerged.end) {
-      // Overlap: extend end if necessary
-      lastMerged.end = new Date(Math.max(lastMerged.end, current.end));
+    const cur = intervals[i];
+    const last = merged[merged.length - 1];
+    if (cur.start <= last.end) {
+      last.end = new Date(Math.max(last.end, cur.end));
     } else {
-      merged.push(current);
+      merged.push({ ...cur });
     }
   }
-  
   return merged;
 }
 
 /**
- * Find common free time for two users/groups on a given date.
+ * Validates that a search date is within the allowed rolling window:
+ * - Not in the past (before today)
+ * - Not beyond J+7
+ * Returns { valid: bool, error: string|null }
  */
-async function findCommonFreeTime(user1, user2, searchDate) {
-  // Define working hours for the day (8:00 to 20:00)
+function validateSearchDate(searchDate) {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const maxDate = new Date(today);
+  maxDate.setDate(maxDate.getDate() + 7);
+  maxDate.setHours(23, 59, 59, 999);
+
+  const d = new Date(searchDate);
+  d.setHours(0, 0, 0, 0);
+
+  if (d < today) {
+    return { valid: false, error: `La date ${d.toLocaleDateString()} est dans le passé. La recherche est impossible.` };
+  }
+  if (d > maxDate) {
+    return { valid: false, error: `La date ${d.toLocaleDateString()} dépasse la fenêtre autorée de 7 jours. La prochaine sync n'a pas encore eu lieu.` };
+  }
+  return { valid: true, error: null };
+}
+
+/**
+ * Builds a Prisma WHERE clause for a given entity.
+ * Accepts:
+ *   - Student group: { type: 'student', department: '3', class_group: '1' }
+ *   - Professor:     { type: 'professor', trigram: 'CGO' }
+ */
+function buildEntityQuery(entity) {
+  if (entity.type === 'professor') {
+    return { professor: { contains: entity.trigram } };
+  }
+  return { department: entity.department, class_group: entity.class_group };
+}
+
+/**
+ * Get all busy intervals for a single entity on a given day.
+ */
+async function getBusyIntervals(entity, startOfDay, endOfDay) {
+  const events = await prisma.classEvent.findMany({
+    where: {
+      ...buildEntityQuery(entity),
+      start_time: { gte: startOfDay },
+      end_time: { lte: endOfDay },
+    },
+    orderBy: { start_time: 'asc' },
+  });
+  return events.map(e => ({ start: e.start_time, end: e.end_time }));
+}
+
+/**
+ * Functionality 1: Check if a specific time slot is free for one entity.
+ * Returns { free: bool, conflicts: [] }
+ */
+async function checkSlotAvailability(entity, slotStart, slotEnd) {
+  const startOfDay = new Date(slotStart);
+  startOfDay.setHours(0, 0, 0, 0);
+  const endOfDay = new Date(slotStart);
+  endOfDay.setHours(23, 59, 59, 999);
+
+  const busy = await getBusyIntervals(entity, startOfDay, endOfDay);
+
+  const conflicts = busy.filter(b => b.start < slotEnd && b.end > slotStart);
+  return { free: conflicts.length === 0, conflicts };
+}
+
+/**
+ * Functionality 2: Find common free slots between two entities on a given date.
+ * Works for: group/group, prof/prof, group/prof.
+ */
+async function findCommonFreeTime(entity1, entity2, searchDate) {
+  const { valid, error } = validateSearchDate(searchDate);
+  if (!valid) throw new Error(error);
+
   const startOfDay = new Date(searchDate);
   startOfDay.setHours(8, 0, 0, 0);
-  
   const endOfDay = new Date(searchDate);
   endOfDay.setHours(20, 0, 0, 0);
 
-  // Fetch events for both users
-  const events = await prisma.classEvent.findMany({
-    where: {
-      OR: [
-        { department: user1.department, class_group: user1.class_group },
-        { department: user2.department, class_group: user2.class_group }
-      ],
-      start_time: { gte: startOfDay },
-      end_time: { lte: endOfDay }
-    },
-    orderBy: { start_time: 'asc' }
-  });
+  // Fetch busy intervals for both entities in parallel
+  const [busy1, busy2] = await Promise.all([
+    getBusyIntervals(entity1, startOfDay, endOfDay),
+    getBusyIntervals(entity2, startOfDay, endOfDay),
+  ]);
 
-  // Extract busy intervals
-  const busyIntervals = events.map(e => ({
-    start: e.start_time,
-    end: e.end_time
-  }));
+  const allBusy = mergeIntervals([...busy1, ...busy2]);
 
-  const mergedBusyIntervals = mergeIntervals(busyIntervals);
-
-  // Find free times (gaps between busy intervals or borders)
+  // Compute free gaps
   const freeTimes = [];
-  let currentStart = startOfDay;
+  let cursor = startOfDay;
 
-  for (const busy of mergedBusyIntervals) {
-    if (currentStart < busy.start) {
-      freeTimes.push({ start: new Date(currentStart), end: new Date(busy.start) });
+  for (const busy of allBusy) {
+    if (cursor < busy.start) {
+      freeTimes.push({ start: new Date(cursor), end: new Date(busy.start) });
     }
-    // Advance currentStart if the busy interval ends later
-    if (busy.end > currentStart) {
-      currentStart = busy.end;
-    }
+    if (busy.end > cursor) cursor = busy.end;
+  }
+  if (cursor < endOfDay) {
+    freeTimes.push({ start: new Date(cursor), end: new Date(endOfDay) });
   }
 
-  // Add the last gap if any
-  if (currentStart < endOfDay) {
-    freeTimes.push({ start: new Date(currentStart), end: new Date(endOfDay) });
-  }
-
-  // Filter out short free times (e.g., less than 1 hour = 3600000 ms)
-  const MIN_FREE_BLOCK_MS = 60 * 60 * 1000;
-  return freeTimes.filter(gap => (gap.end - gap.start) >= MIN_FREE_BLOCK_MS);
+  // Filter gaps shorter than 1 hour
+  const MIN_MS = 60 * 60 * 1000;
+  return freeTimes.filter(gap => gap.end - gap.start >= MIN_MS);
 }
 
-module.exports = { findCommonFreeTime, mergeIntervals };
+module.exports = { findCommonFreeTime, checkSlotAvailability, validateSearchDate, mergeIntervals };
