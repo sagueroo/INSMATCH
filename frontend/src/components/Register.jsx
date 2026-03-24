@@ -1,6 +1,47 @@
 import { useState, useEffect } from 'react';
 import axios from 'axios';
 
+// Reusable input and select
+const InputField = ({ label, icon, value, onChange, type = 'text', placeholder = '', suffix, options = [] }) => (
+  <div style={{ marginBottom: '14px' }}>
+    <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', color: '#64748b', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{label}</label>
+    <div style={{ position: 'relative' }}>
+      <div style={{ position: 'absolute', left: '14px', top: '50%', transform: 'translateY(-50%)', color: '#64748b', display: 'flex' }}>{icon}</div>
+      {type === 'select' ? (
+        <select
+          className="reg-input"
+          value={value} onChange={onChange} required
+          style={{
+            width: '100%', height: '50px', paddingLeft: '44px', paddingRight: '16px',
+            background: '#162a4a', border: '1.5px solid #1e3a5f', borderRadius: '12px',
+            color: '#e2e8f0', fontSize: '14px', outline: 'none', transition: 'all 0.2s',
+            fontFamily: "'Inter', sans-serif", appearance: 'none'
+          }}
+        >
+          <option value="" disabled hidden>{placeholder}</option>
+          {options.map(opt => (
+            <option key={opt} value={opt}>{opt}</option>
+          ))}
+        </select>
+      ) : (
+        <input
+          className="reg-input"
+          type={type} value={value} onChange={onChange} placeholder={placeholder} required
+          style={{
+            width: '100%', height: '50px', paddingLeft: '44px', paddingRight: suffix ? '48px' : '16px',
+            background: '#162a4a', border: '1.5px solid #1e3a5f', borderRadius: '12px',
+            color: '#e2e8f0', fontSize: '14px', outline: 'none', transition: 'all 0.2s',
+            fontFamily: "'Inter', sans-serif",
+          }}
+        />
+      )}
+      {suffix && (
+        <div style={{ position: 'absolute', right: '14px', top: '50%', transform: 'translateY(-50%)', display: 'flex' }}>{suffix}</div>
+      )}
+    </div>
+  </div>
+);
+
 const Register = ({ onGoToLogin }) => {
   const [formData, setFormData] = useState({
     first_name: '', last_name: '', email: '', password: '',
@@ -53,29 +94,6 @@ const Register = ({ onGoToLogin }) => {
   const step1Valid = formData.first_name && formData.last_name && formData.email && formData.password;
   const step2Valid = isProfessor ? formData.trigram : (formData.department && formData.class_group);
   const canProceed = step === 1 ? step1Valid : step2Valid;
-
-  // Reusable input
-  const InputField = ({ label, icon, value, onChange, type = 'text', placeholder = '', suffix }) => (
-    <div style={{ marginBottom: '14px' }}>
-      <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', color: '#64748b', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{label}</label>
-      <div style={{ position: 'relative' }}>
-        <div style={{ position: 'absolute', left: '14px', top: '50%', transform: 'translateY(-50%)', color: '#64748b', display: 'flex' }}>{icon}</div>
-        <input
-          className="reg-input"
-          type={type} value={value} onChange={onChange} placeholder={placeholder} required
-          style={{
-            width: '100%', height: '50px', paddingLeft: '44px', paddingRight: suffix ? '48px' : '16px',
-            background: '#162a4a', border: '1.5px solid #1e3a5f', borderRadius: '12px',
-            color: '#e2e8f0', fontSize: '14px', outline: 'none', transition: 'all 0.2s',
-            fontFamily: "'Inter', sans-serif",
-          }}
-        />
-        {suffix && (
-          <div style={{ position: 'absolute', right: '14px', top: '50%', transform: 'translateY(-50%)', display: 'flex' }}>{suffix}</div>
-        )}
-      </div>
-    </div>
-  );
 
   return (
     <div style={{
@@ -214,12 +232,14 @@ const Register = ({ onGoToLogin }) => {
               ) : (
                 /* Student fields */
                 <>
-                  <InputField label="Département" placeholder="Ex: TC, IF, GI, GE..." value={formData.department} onChange={set('department')}
+                  <InputField label="Département" placeholder="Choisir le département (3 ou 4)" value={formData.department} onChange={(e) => setFormData({...formData, department: e.target.value, class_group: ''})} type="select" options={['3', '4']}
                     icon={<svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M22 10v6M2 10l10-5 10 5-10 5z"/><path d="M6 12v5c0 2 3 3 6 3s6-1 6-3v-5"/></svg>}
                   />
-                  <InputField label="Classe / Groupe" placeholder="Ex: 3TC Groupe 1" value={formData.class_group} onChange={set('class_group')}
-                    icon={<svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>}
-                  />
+                  {formData.department && (
+                    <InputField label="Classe / Groupe" placeholder="Choisir la classe (ex: 1, 2...)" value={formData.class_group} onChange={set('class_group')} type="select" options={formData.department === '3' ? ['1', '2', '3', '4'] : formData.department === '4' ? ['1', '2', '3'] : []}
+                      icon={<svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>}
+                    />
+                  )}
                 </>
               )}
             </div>
