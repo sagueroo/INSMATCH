@@ -5,7 +5,7 @@ import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 
 const Dashboard = ({ onLogout }) => {
-  const [darkMode, setDarkMode] = useState(false);
+  const [darkMode, setDarkMode] = useState(true);
   const [activeTab, setActiveTab] = useState('ia');
   const [isMatchDrawerOpen, setIsMatchDrawerOpen] = useState(false);
   const [messages, setMessages] = useState([]);
@@ -14,6 +14,7 @@ const Dashboard = ({ onLogout }) => {
   const [requests, setRequests] = useState([]);
   const [requestsLoading, setRequestsLoading] = useState(true);
   const [selectedRequest, setSelectedRequest] = useState(null);
+  const [requestToDelete, setRequestToDelete] = useState(null);
   const [profileData, setProfileData] = useState(null);
   const [profileLoading, setProfileLoading] = useState(true);
   const [communityData, setCommunityData] = useState(null);
@@ -58,14 +59,15 @@ const Dashboard = ({ onLogout }) => {
   };
 
   // ─── DELETE REQUEST ───
-  const deleteRequest = async (requestId) => {
-    if (!window.confirm('Supprimer cette demande ?')) return;
+  const confirmDeleteRequest = async () => {
+    if (!requestToDelete) return;
     try {
       const token = localStorage.getItem('token');
-      await axios.delete(`http://127.0.0.1:8000/requests/${requestId}`, {
+      await axios.delete(`http://127.0.0.1:8000/requests/${requestToDelete}`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       setSelectedRequest(null);
+      setRequestToDelete(null);
       fetchRequests();
       fetchProfile();
     } catch (err) {
@@ -390,7 +392,7 @@ const Dashboard = ({ onLogout }) => {
                 </div>
               </div>
               {/* Bouton supprimer */}
-              <button onClick={(e) => { e.stopPropagation(); deleteRequest(req.id); }} style={{
+              <button onClick={(e) => { e.stopPropagation(); setRequestToDelete(req.id); }} style={{
                 position: 'absolute', top: '10px', right: '10px', background: 'none', border: 'none',
                 cursor: 'pointer', color: c.textMuted, padding: '4px', borderRadius: '6px',
                 transition: 'color 0.2s',
@@ -762,13 +764,22 @@ const Dashboard = ({ onLogout }) => {
     const dayOfWeek = today.getDay();
     const monday = new Date(today);
     monday.setDate(today.getDate() - (dayOfWeek === 0 ? 6 : dayOfWeek - 1));
-    const friday = new Date(monday); friday.setDate(monday.getDate() + 4);
-    const fmtShort = (d) => new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'long' }).format(d);
-    const fmtWeek = `Semaine du ${fmtShort(monday)} au ${fmtShort(friday)} ${friday.getFullYear()}`;
 
-    // Build the date for the active day (can span beyond current week for rolling window)
+    // Support for 2 weeks (activeDay from 0 to 9)
+    const isNextWeek = activeDay >= 5;
+    const currentMonday = new Date(monday);
+    if (isNextWeek) currentMonday.setDate(currentMonday.getDate() + 7);
+
+    const currentFriday = new Date(currentMonday);
+    currentFriday.setDate(currentMonday.getDate() + 4);
+
+    const fmtShort = (d) => new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'long' }).format(d);
+    const fmtWeek = `Semaine du ${fmtShort(currentMonday)} au ${fmtShort(currentFriday)} ${currentFriday.getFullYear()}`;
+
+    // Build the date for the active day (0-4 = this week, 5-9 = next week)
     const dayDate = new Date(monday);
-    dayDate.setDate(monday.getDate() + activeDay);
+    const daysToAdd = activeDay >= 5 ? activeDay + 2 : activeDay; // Skip weekend
+    dayDate.setDate(monday.getDate() + daysToAdd);
     const fmtDay = new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'long' }).format(dayDate);
 
     // Type badge colors — exactly matching mockup
@@ -830,10 +841,10 @@ const Dashboard = ({ onLogout }) => {
             <svg width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6" /></svg>
           </button>
           <div style={{ textAlign: 'center' }}>
-            <p style={{ fontSize: '17px', fontWeight: '700', color: '#E30613', margin: '0 0 2px', textTransform: 'capitalize' }}>{jours[activeDay]}</p>
+            <p style={{ fontSize: '17px', fontWeight: '700', color: '#E30613', margin: '0 0 2px', textTransform: 'capitalize' }}>{jours[activeDay % 5]}</p>
             <p style={{ fontSize: '12px', color: c.textMuted, margin: 0, textTransform: 'capitalize' }}>{fmtDay}</p>
           </div>
-          <button onClick={() => setActiveDay(d => Math.min(4, d + 1))} disabled={activeDay === 4} style={{ background: 'none', border: 'none', cursor: activeDay === 4 ? 'not-allowed' : 'pointer', opacity: activeDay === 4 ? 0.3 : 1, padding: '4px', lineHeight: 0, color: c.text }}>
+          <button onClick={() => setActiveDay(d => Math.min(9, d + 1))} disabled={activeDay === 9} style={{ background: 'none', border: 'none', cursor: activeDay === 9 ? 'not-allowed' : 'pointer', opacity: activeDay === 9 ? 0.3 : 1, padding: '4px', lineHeight: 0, color: c.text }}>
             <svg width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6" /></svg>
           </button>
         </div>
@@ -1684,6 +1695,34 @@ const Dashboard = ({ onLogout }) => {
     { id: 'profil', label: 'Profil', icon: (a) => <svg width="22" height="22" fill="none" stroke={a ? '#E30613' : c.textMuted} strokeWidth="2" viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" /></svg> },
   ];
 
+  // ━━━━━━━━━━━━ DELETE CONFIRM MODAL ━━━━━━━━━━━━
+  const renderDeleteConfirmModal = () => {
+    if (!requestToDelete) return null;
+    return (
+      <div onClick={() => setRequestToDelete(null)} style={{
+        position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+        background: c.overlay, zIndex: 3000,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        padding: '20px', animation: 'fadeIn 0.2s ease',
+      }}>
+        <div onClick={e => e.stopPropagation()} style={{
+          background: c.surface, borderRadius: '24px', width: '100%', maxWidth: '360px',
+          padding: '24px', border: `1px solid ${c.surfaceBorder}`,
+          boxShadow: '0 24px 80px rgba(0,0,0,0.25)', textAlign: 'center',
+        }}>
+          <div style={{ width: '56px', height: '56px', borderRadius: '50%', background: 'rgba(227,6,19,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
+            <svg width="28" height="28" fill="none" stroke="#E30613" strokeWidth="2" viewBox="0 0 24 24"><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /><line x1="10" y1="11" x2="10" y2="17" /><line x1="14" y1="11" x2="14" y2="17" /></svg>
+          </div>
+          <h3 style={{ fontSize: '18px', fontWeight: '700', color: c.text, margin: '0 0 10px' }}>Supprimer la recherche ?</h3>
+          <p style={{ fontSize: '14px', color: c.textMuted, margin: '0 0 24px', lineHeight: '1.5' }}>Êtes-vous sûr de vouloir supprimer cette recherche de partenaire ? Cette action est irréversible.</p>
+          <div style={{ display: 'flex', gap: '12px' }}>
+            <button onClick={() => setRequestToDelete(null)} style={{ flex: 1, padding: '12px', background: 'transparent', border: `1.5px solid ${c.surfaceBorder}`, borderRadius: '12px', color: c.text, fontWeight: '600', cursor: 'pointer', fontFamily: "'Inter', sans-serif" }}>Annuler</button>
+            <button onClick={confirmDeleteRequest} style={{ flex: 1, padding: '12px', background: '#E30613', border: 'none', borderRadius: '12px', color: 'white', fontWeight: '600', cursor: 'pointer', fontFamily: "'Inter', sans-serif" }}>Supprimer</button>
+          </div>
+        </div>
+      </div>
+    );
+  };
   // ━━━━━━━━━━━━ RENDER ━━━━━━━━━━━━
   return (
     <div style={{ width: '100%', height: '100vh', display: 'flex', flexDirection: 'column', fontFamily: "'Inter', sans-serif", background: c.bg, color: c.text, overflow: 'hidden' }}>
@@ -1712,10 +1751,9 @@ const Dashboard = ({ onLogout }) => {
 
       {/* TOP BAR */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 20px', flexShrink: 0, background: c.headerBg, borderBottom: `1px solid ${c.headerBorder}` }}>
-        <h1 style={{ margin: 0, fontSize: '22px', fontWeight: '800', letterSpacing: '-0.02em' }}>
-          <span style={{ color: '#E30613', fontFamily: "'Playfair Display', serif", fontStyle: 'italic' }}>INSA</span>
-          <span style={{ color: '#002157' }}>MATCH</span>
-        </h1>
+        <div style={{ display: 'flex', alignItems: 'center' }}>
+          <img src="/logo.png" alt="INSAMATCH" style={{ height: '40px', objectFit: 'contain' }} />
+        </div>
         <button onClick={() => setDarkMode(!darkMode)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '6px', color: c.textMuted, lineHeight: 0 }}>
           {darkMode
             ? <svg width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="5" /><line x1="12" y1="1" x2="12" y2="3" /><line x1="12" y1="21" x2="12" y2="23" /><line x1="4.22" y1="4.22" x2="5.64" y2="5.64" /><line x1="18.36" y1="18.36" x2="19.78" y2="19.78" /><line x1="1" y1="12" x2="3" y2="12" /><line x1="21" y1="12" x2="23" y2="12" /><line x1="4.22" y1="19.78" x2="5.64" y2="18.36" /><line x1="18.36" y1="5.64" x2="19.78" y2="4.22" /></svg>
@@ -1766,6 +1804,7 @@ const Dashboard = ({ onLogout }) => {
       {renderDetailPopup()}
       {renderMatchsDrawer()}
       {renderEditProfileModal()}
+      {renderDeleteConfirmModal()}
     </div>
   );
 };

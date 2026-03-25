@@ -35,7 +35,7 @@ const Login = ({ onLoginSuccess, onGoToRegister }) => {
   return (
     <div style={{
       minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center',
-      background: '#0a1628', fontFamily: "'Inter', sans-serif", padding: '20px',
+      background: '#0a0a0a', fontFamily: "'Inter', sans-serif", padding: '20px',
     }}>
       <style>{`
         * { box-sizing: border-box; }
@@ -51,21 +51,20 @@ const Login = ({ onLoginSuccess, onGoToRegister }) => {
       `}</style>
 
       <div className="login-card" style={{
-        width: '100%', maxWidth: '420px', background: '#0f2040',
+        width: '100%', maxWidth: '420px', background: '#121212',
         borderRadius: '28px', overflow: 'hidden',
-        border: '1px solid #1a3358',
+        border: '1px solid #2a2a2a',
         boxShadow: '0 24px 80px rgba(0,0,0,0.4)',
       }}>
         {/* Header */}
         <div style={{
-          background: 'linear-gradient(135deg, #002157 0%, #0a1628 100%)',
+          background: 'transparent',
           padding: '36px 28px 28px', textAlign: 'center',
-          borderBottom: '1px solid #1a3358',
+          borderBottom: '1px solid #2a2a2a',
         }}>
-          <h1 style={{ margin: '0 0 6px', fontSize: '28px', fontWeight: '800', letterSpacing: '-0.02em' }}>
-            <span style={{ color: '#E30613', fontFamily: "'Playfair Display', serif", fontStyle: 'italic' }}>INSA</span>
-            <span style={{ color: '#e2e8f0' }}>MATCH</span>
-          </h1>
+          <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '12px' }}>
+            <img src="/logo.png" alt="INSAMATCH" style={{ height: '80px', objectFit: 'contain' }} />
+          </div>
           <p style={{ color: '#64748b', fontSize: '14px', margin: 0 }}>Trouve ton partenaire sportif</p>
         </div>
 
@@ -78,7 +77,7 @@ const Login = ({ onLoginSuccess, onGoToRegister }) => {
               background: '#1c1017', border: '1px solid #5c1a1a', borderRadius: '12px',
               padding: '12px 14px', marginBottom: '18px', display: 'flex', alignItems: 'center', gap: '10px',
             }}>
-              <svg width="18" height="18" fill="none" stroke="#ef4444" strokeWidth="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+              <svg width="18" height="18" fill="none" stroke="#ef4444" strokeWidth="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" /><line x1="15" y1="9" x2="9" y2="15" /><line x1="9" y1="9" x2="15" y2="15" /></svg>
               <span style={{ color: '#fca5a5', fontSize: '13px' }}>{error}</span>
             </div>
           )}
@@ -88,7 +87,7 @@ const Login = ({ onLoginSuccess, onGoToRegister }) => {
             <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', color: '#64748b', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Email</label>
             <div style={{ position: 'relative' }}>
               <div style={{ position: 'absolute', left: '14px', top: '50%', transform: 'translateY(-50%)', color: '#64748b', display: 'flex' }}>
-                <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+                <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" /><polyline points="22,6 12,13 2,6" /></svg>
               </div>
               <input
                 className="login-input"
@@ -97,7 +96,7 @@ const Login = ({ onLoginSuccess, onGoToRegister }) => {
                 required
                 style={{
                   width: '100%', height: '50px', paddingLeft: '44px', paddingRight: '16px',
-                  background: '#162a4a', border: '1.5px solid #1e3a5f', borderRadius: '12px',
+                  background: '#1a1a1a', border: '1.5px solid #333', borderRadius: '12px',
                   color: '#e2e8f0', fontSize: '14px', outline: 'none', transition: 'all 0.2s',
                   fontFamily: "'Inter', sans-serif",
                 }}
@@ -110,7 +109,7 @@ const Login = ({ onLoginSuccess, onGoToRegister }) => {
             <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', color: '#64748b', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Mot de passe</label>
             <div style={{ position: 'relative' }}>
               <div style={{ position: 'absolute', left: '14px', top: '50%', transform: 'translateY(-50%)', color: '#64748b', display: 'flex' }}>
-                <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2" ry="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" /></svg>
               </div>
               <input
                 className="login-input"
@@ -120,7 +119,7 @@ const Login = ({ onLoginSuccess, onGoToRegister }) => {
                 required
                 style={{
                   width: '100%', height: '50px', paddingLeft: '44px', paddingRight: '48px',
-                  background: '#162a4a', border: '1.5px solid #1e3a5f', borderRadius: '12px',
+                  background: '#1a1a1a', border: '1.5px solid #333', borderRadius: '12px',
                   color: '#e2e8f0', fontSize: '14px', outline: 'none', transition: 'all 0.2s',
                   fontFamily: "'Inter', sans-serif",
                 }}
@@ -130,8 +129,8 @@ const Login = ({ onLoginSuccess, onGoToRegister }) => {
                 background: 'none', border: 'none', cursor: 'pointer', color: '#64748b', display: 'flex', padding: 0,
               }}>
                 {showPassword
-                  ? <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
-                  : <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                  ? <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94" /><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19" /><line x1="1" y1="1" x2="23" y2="23" /></svg>
+                  : <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" /><circle cx="12" cy="12" r="3" /></svg>
                 }
               </button>
             </div>
@@ -148,7 +147,7 @@ const Login = ({ onLoginSuccess, onGoToRegister }) => {
           }}>
             {loading ? (
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" style={{ animation: 'spin 1s linear infinite' }}>
-                <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4"/>
+                <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4" />
               </svg>
             ) : 'Se connecter'}
           </button>

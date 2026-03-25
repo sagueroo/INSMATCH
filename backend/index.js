@@ -8,7 +8,6 @@ const requestsRouter = require('./routes/requests');
 const profileRouter = require('./routes/profile');
 const communityRouter = require('./routes/community');
 const venuesRouter = require('./routes/venues');
-const timetableRouter = require('./routes/timetable');
 const scheduleRouter = require('./routes/schedule');
 
 const app = express();
@@ -29,7 +28,6 @@ app.use('/requests', requestsRouter);
 app.use('/profile', profileRouter);
 app.use('/community', communityRouter);
 app.use('/venues', venuesRouter);
-app.use('/timetable', timetableRouter);
 app.use('/schedule', scheduleRouter);
 
 // --- ROUTE DE TEST ---
