@@ -109,12 +109,11 @@ async function syncGroupTimetable(promo, groupe, slidingDay = null) {
           },
         });
       } else {
-        // Full sync: delete all from today onwards
+        // Full sync: delete ALL events for this group (cleaning up the past permanently)
         await tx.classEvent.deleteMany({
           where: {
             department: promo.toString(),
             class_group: groupe.toString(),
-            start_time: { gte: startOfToday },
           },
         });
       }
