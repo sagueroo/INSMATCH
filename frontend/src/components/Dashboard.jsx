@@ -759,74 +759,92 @@ const Dashboard = ({ onLogout }) => {
   const renderEmploiPage = () => {
     const jours = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi'];
     const today = new Date();
-    // Current week Monday
     const dayOfWeek = today.getDay();
     const monday = new Date(today);
     monday.setDate(today.getDate() - (dayOfWeek === 0 ? 6 : dayOfWeek - 1));
     const friday = new Date(monday); friday.setDate(monday.getDate() + 4);
     const fmtShort = (d) => new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'long' }).format(d);
     const fmtWeek = `Semaine du ${fmtShort(monday)} au ${fmtShort(friday)} ${friday.getFullYear()}`;
-    const dayDate = new Date(monday); dayDate.setDate(monday.getDate() + activeDay);
-    const fmtDay = new Intl.DateTimeFormat('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' }).format(dayDate);
 
+    // Build the date for the active day (can span beyond current week for rolling window)
+    const dayDate = new Date(monday);
+    dayDate.setDate(monday.getDate() + activeDay);
+    const fmtDay = new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'long' }).format(dayDate);
+
+    // Type badge colors — exactly matching mockup
     const typeColor = (t) => {
       const u = (t || '').toUpperCase();
       if (u === 'CM') return { bg: '#E30613', text: 'white' };
       if (u === 'TD') return { bg: '#002157', text: 'white' };
       if (u === 'TP') return { bg: '#6b7280', text: 'white' };
+      if (u === 'COURS') return { bg: '#E30613', text: 'white' };
       return { bg: '#e5e7eb', text: '#374151' };
     };
 
     const formatHour = (val) => {
-      if (!val) return '';
+      if (!val) return '--:--';
       const d = new Date(val);
       if (!isNaN(d)) return d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
       return String(val).substring(0, 5);
     };
 
-    const todayEvents = scheduleData?.events?.filter(ev => {
+    // Filter events for the selected day
+    const todayEvents = (scheduleData?.events || []).filter(ev => {
       const st = new Date(ev.start_time);
-      if (!isNaN(st)) {
-        const d = st.getDay();
-        const idx = d === 0 ? 4 : d - 1;
-        return idx === activeDay;
-      }
-      return false;
-    }) || [];
+      if (isNaN(st)) return false;
+      // Compare date (year/month/day) only
+      return (
+        st.getFullYear() === dayDate.getFullYear() &&
+        st.getMonth() === dayDate.getMonth() &&
+        st.getDate() === dayDate.getDate()
+      );
+    });
 
     return (
       <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden', background: c.bg }}>
-        {/* Hero banner */}
+
+        {/* ── Hero banner ── */}
         <div style={{ margin: '16px 16px 0', borderRadius: '20px', background: 'linear-gradient(135deg, #002157 0%, #001a44 50%, #8b1a2b 80%, #E30613 100%)', padding: '22px 20px', flexShrink: 0 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
             <div>
               <h2 style={{ color: 'white', fontSize: '20px', fontWeight: '800', margin: '0 0 6px' }}>Emploi du Temps</h2>
               <p style={{ color: 'rgba(255,255,255,0.75)', fontSize: '13px', margin: '0 0 2px' }}>{fmtWeek}</p>
-              {scheduleData && <p style={{ color: 'rgba(255,255,255,0.55)', fontSize: '12px', margin: 0 }}>{scheduleData.department} Groupe {scheduleData.class_group}</p>}
+              {scheduleData && (
+                <p style={{ color: 'rgba(255,255,255,0.55)', fontSize: '12px', margin: 0 }}>
+                  {scheduleData.department}TC Groupe {scheduleData.class_group} – Télécommunications
+                </p>
+              )}
             </div>
-            <svg width="28" height="28" fill="none" stroke="rgba(255,255,255,0.6)" strokeWidth="1.5" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2" ry="2" /><line x1="16" y1="2" x2="16" y2="6" /><line x1="8" y1="2" x2="8" y2="6" /><line x1="3" y1="10" x2="21" y2="10" /></svg>
+            <svg width="28" height="28" fill="none" stroke="rgba(255,255,255,0.6)" strokeWidth="1.5" viewBox="0 0 24 24">
+              <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
+              <line x1="16" y1="2" x2="16" y2="6" />
+              <line x1="8" y1="2" x2="8" y2="6" />
+              <line x1="3" y1="10" x2="21" y2="10" />
+            </svg>
           </div>
         </div>
 
-        {/* Day selector */}
+        {/* ── Day selector ── */}
         <div style={{ margin: '12px 16px 0', background: c.surface, borderRadius: '16px', border: `1px solid ${c.surfaceBorder}`, padding: '14px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
           <button onClick={() => setActiveDay(d => Math.max(0, d - 1))} disabled={activeDay === 0} style={{ background: 'none', border: 'none', cursor: activeDay === 0 ? 'not-allowed' : 'pointer', opacity: activeDay === 0 ? 0.3 : 1, padding: '4px', lineHeight: 0, color: c.text }}>
             <svg width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6" /></svg>
           </button>
           <div style={{ textAlign: 'center' }}>
             <p style={{ fontSize: '17px', fontWeight: '700', color: '#E30613', margin: '0 0 2px', textTransform: 'capitalize' }}>{jours[activeDay]}</p>
-            <p style={{ fontSize: '12px', color: c.textMuted, margin: 0, textTransform: 'capitalize' }}>{fmtShort(dayDate)}</p>
+            <p style={{ fontSize: '12px', color: c.textMuted, margin: 0, textTransform: 'capitalize' }}>{fmtDay}</p>
           </div>
           <button onClick={() => setActiveDay(d => Math.min(4, d + 1))} disabled={activeDay === 4} style={{ background: 'none', border: 'none', cursor: activeDay === 4 ? 'not-allowed' : 'pointer', opacity: activeDay === 4 ? 0.3 : 1, padding: '4px', lineHeight: 0, color: c.text }}>
             <svg width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6" /></svg>
           </button>
         </div>
 
-        {/* Events list */}
+        {/* ── Events list ── */}
         <div style={{ flex: 1, overflowY: 'auto', padding: '12px 16px 24px' }}>
           {scheduleLoading ? (
             <div style={{ textAlign: 'center', padding: '60px 0', color: c.textMuted }}>
-              <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#E30613" strokeWidth="2.5" style={{ animation: 'spin 1s linear infinite', margin: '0 auto', display: 'block' }}><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83" /></svg>
+              <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#E30613" strokeWidth="2.5" style={{ animation: 'spin 1s linear infinite', margin: '0 auto', display: 'block' }}>
+                <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83" />
+              </svg>
               <p style={{ fontSize: '14px', marginTop: '12px' }}>Chargement...</p>
             </div>
           ) : todayEvents.length === 0 ? (
@@ -839,23 +857,60 @@ const Dashboard = ({ onLogout }) => {
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
               {todayEvents.map((ev, i) => {
                 const tc = typeColor(ev.type);
+                const displayTitle = ev.subject || ev.title;
+                const subtitle = ev.subtitle;
+                const prof = ev.professor || 'N/A';
+                const loc = ev.location || 'N/A';
+
                 return (
-                  <div key={ev.id || i} style={{ background: c.surface, border: `1px solid ${c.surfaceBorder}`, borderRadius: '16px', padding: '16px 18px' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '10px' }}>
-                      <h3 style={{ fontSize: '15px', fontWeight: '700', color: c.text, margin: 0, flex: 1, paddingRight: '10px' }}>{ev.title}</h3>
-                      {ev.type && <span style={{ flexShrink: 0, fontSize: '11px', fontWeight: '700', padding: '3px 10px', borderRadius: '8px', background: tc.bg, color: tc.text }}>{ev.type.toUpperCase()}</span>}
+                  <div key={ev.id || i} style={{
+                    background: c.surface,
+                    border: `1px solid ${c.surfaceBorder}`,
+                    borderRadius: '16px',
+                    padding: '16px 18px',
+                    boxShadow: darkMode ? 'none' : '0 1px 4px rgba(0,0,0,0.06)',
+                  }}>
+                    {/* Title row */}
+                    <div style={{ marginBottom: '8px' }}>
+                      <h3 style={{ fontSize: '15px', fontWeight: '700', color: c.text, margin: '0 0 6px' }}>
+                        {displayTitle}
+                        {subtitle ? <span style={{ fontWeight: '400', color: c.textMuted, fontSize: '14px' }}> – {subtitle}</span> : null}
+                      </h3>
+                      {/* Type badge */}
+                      {ev.type && (
+                        <span style={{
+                          display: 'inline-block',
+                          fontSize: '11px', fontWeight: '700',
+                          padding: '3px 10px', borderRadius: '8px',
+                          background: tc.bg, color: tc.text,
+                          letterSpacing: '0.5px',
+                        }}>{ev.type}</span>
+                      )}
                     </div>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+
+                    {/* Info rows */}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '7px', marginTop: '8px' }}>
+                      {/* Time */}
                       <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: c.textMuted }}>
-                        <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" /></svg>
+                        <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                          <circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" />
+                        </svg>
                         {formatHour(ev.start_time)} – {formatHour(ev.end_time)}
                       </div>
-                      {ev.location && (
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: c.textMuted }}>
-                          <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" /><circle cx="12" cy="10" r="3" /></svg>
-                          {ev.location}
-                        </div>
-                      )}
+                      {/* Professor */}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: c.textMuted }}>
+                        <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                          <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" />
+                        </svg>
+                        {prof}
+                      </div>
+                      {/* Location */}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: c.textMuted }}>
+                        <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                          <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" /><circle cx="12" cy="10" r="3" />
+                        </svg>
+                        {loc}
+                      </div>
                     </div>
                   </div>
                 );
