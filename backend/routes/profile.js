@@ -87,6 +87,7 @@ router.get('/', getCurrentUser, async (req, res) => {
         // ── 5. Matchs récents ──
         const recentMatchesRaw = await prisma.match.findMany({
             where: {
+                status: 'scheduled',
                 OR: [
                     { request_a: { user_id: userId } },
                     { request_b: { user_id: userId } },

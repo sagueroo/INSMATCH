@@ -117,6 +117,34 @@ router.get('/', getCurrentUser, async (req, res) => {
         activities.sort((a, b) => new Date(b.date) - new Date(a.date));
         const recentActivity = activities.slice(0, 15);
 
+        const nowEv = new Date();
+        const groupEventsRaw = await prisma.groupEvent.findMany({
+            where: { status: 'recruiting', start_time: { gte: nowEv } },
+            include: {
+                sport: true,
+                venue: true,
+                members: {
+                    include: { user: { select: { first_name: true, last_name: true } } },
+                    take: 4,
+                    orderBy: { joined_at: 'asc' },
+                },
+                _count: { select: { members: true } },
+            },
+            orderBy: { start_time: 'asc' },
+            take: 20,
+        });
+
+        const publicEvents = groupEventsRaw.map((ev) => ({
+            id: ev.id,
+            sportName: ev.sport.name,
+            matchMode: ev.sport.match_mode,
+            maxPlayers: ev.sport.max_players,
+            venueName: ev.venue?.name ?? 'À convenir',
+            startTime: ev.start_time.toISOString(),
+            participantCount: ev._count.members,
+            membersPreview: ev.members.map((m) => `${m.user.first_name} ${m.user.last_name}`),
+        }));
+
         // ── RESPONSE ──
         res.json({
             stats: {
@@ -126,6 +154,7 @@ router.get('/', getCurrentUser, async (req, res) => {
             },
             topAthletes,
             recentActivity,
+            publicEvents,
         });
 
     } catch (error) {

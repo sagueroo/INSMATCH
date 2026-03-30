@@ -26,6 +26,9 @@ model User {
   matchRequests MatchRequest[]
   userSports    UserSport[]
   userRewards   UserReward[]
+  groupEventMembers GroupEventMember[]
+  groupJoinRequests GroupJoinRequest[] @relation("JoinApplicant")
+  notifications Notification[]
 
   @@map("users")
 }
@@ -33,11 +36,15 @@ model User {
 model Sport {
   id   String @id @default(uuid()) @db.Uuid
   name String @unique
-  
+  /// duel = 1v1 ; collective = équipe (foot, basket…) ; open_group = sans plafond
+  match_mode  String @default("duel")
+  max_players Int?
+
   // Relations
   venues        VenueSport[]
   matchRequests MatchRequest[]
   userSports    UserSport[]
+  groupEvents   GroupEvent[]
 
   @@map("sports")
 }
@@ -51,8 +58,10 @@ model Venue {
   is_active Boolean @default(true)
   
   // Relations
-  sports  VenueSport[]
-  matches Match[]
+  sports         VenueSport[]
+  matches        Match[]
+  matchRequests  MatchRequest[]
+  groupEvents    GroupEvent[]
 
   @@map("venues")
 }
@@ -73,19 +82,31 @@ model MatchRequest {
   id                 String   @id @default(uuid()) @db.Uuid
   user_id            String   @db.Uuid
   sport_id           String   @db.Uuid
+  venue_id           String?  @db.Uuid
   availability_notes String?  @db.Text
+  /// Ex. { "weekend_not_before_hour": 15 } — samedi/dimanche, créneau pas avant cette heure.
+  time_constraints   Json?
   status             String   @default("pending")
   created_at         DateTime @default(now())
+
+  /// Durée souhaitée en minutes (30–180). Null = défaut 60 à l’appariement.
+  preferred_duration_minutes Int?
 
   // Ajout du créneau final pour la V2 (Emploi du temps)
   proposed_time      DateTime?
 
+  group_event_id String? @db.Uuid
+  group_event    GroupEvent? @relation(fields: [group_event_id], references: [id], onDelete: SetNull)
+
   // Relations
   user         User    @relation(fields: [user_id], references: [id], onDelete: Cascade)
   sport        Sport   @relation(fields: [sport_id], references: [id], onDelete: Restrict)
+  venue        Venue?  @relation(fields: [venue_id], references: [id], onDelete: SetNull)
   matchesAsReqA Match[] @relation("MatchesAsReqA")
   matchesAsReqB Match[] @relation("MatchesAsReqB")
 
+  @@index([sport_id, venue_id, status])
+  @@index([group_event_id])
   @@map("match_requests")
 }
 
@@ -93,17 +114,91 @@ model Match {
   id           String   @id @default(uuid()) @db.Uuid
   request_a_id String   @db.Uuid
   request_b_id String   @db.Uuid
-  venue_id     String   @db.Uuid
+  venue_id     String?  @db.Uuid
   start_time   DateTime
   end_time     DateTime
-  status       String   @default("scheduled")
+  /// Durée réelle du créneau réservé (minutes), min des préférences des deux joueurs.
+  duration_minutes Int @default(60)
+  /// pending_acceptance = créneau proposé, en attente des deux joueurs ; scheduled = confirmé ; completed = terminé et stats enregistrées
+  status       String   @default("pending_acceptance")
+  user_a_accepted Boolean @default(false)
+  user_b_accepted Boolean @default(false)
+  /// True après incrémentation des UserSport.match_count
+  stats_recorded Boolean @default(false)
 
   // Relations
   request_a MatchRequest @relation("MatchesAsReqA", fields: [request_a_id], references: [id])
   request_b MatchRequest @relation("MatchesAsReqB", fields: [request_b_id], references: [id])
-  venue     Venue        @relation(fields: [venue_id], references: [id])
+  venue     Venue?       @relation(fields: [venue_id], references: [id], onDelete: SetNull)
 
   @@map("matches")
+}
+
+model GroupEvent {
+  id               String   @id @default(uuid()) @db.Uuid
+  sport_id         String   @db.Uuid
+  venue_id         String?  @db.Uuid
+  start_time       DateTime
+  end_time         DateTime
+  duration_minutes Int      @default(60)
+  status           String   @default("recruiting")
+  created_at       DateTime @default(now())
+
+  sport         Sport @relation(fields: [sport_id], references: [id], onDelete: Restrict)
+  venue         Venue? @relation(fields: [venue_id], references: [id], onDelete: SetNull)
+  members       GroupEventMember[]
+  joinRequests    GroupJoinRequest[]
+  matchRequests   MatchRequest[]
+
+  @@index([sport_id, status])
+  @@map("group_events")
+}
+
+model GroupEventMember {
+  id             String   @id @default(uuid()) @db.Uuid
+  group_event_id String   @db.Uuid
+  user_id        String   @db.Uuid
+  is_founder     Boolean  @default(false)
+  joined_at      DateTime @default(now())
+
+  group_event GroupEvent @relation(fields: [group_event_id], references: [id], onDelete: Cascade)
+  user        User       @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@unique([group_event_id, user_id])
+  @@map("group_event_members")
+}
+
+model GroupJoinRequest {
+  id                         String   @id @default(uuid()) @db.Uuid
+  group_event_id             String   @db.Uuid
+  applicant_user_id          String   @db.Uuid
+  applicant_match_request_id String?  @db.Uuid
+  status                     String   @default("pending")
+  created_at                 DateTime @default(now())
+  resolved_at                DateTime?
+
+  group_event GroupEvent @relation(fields: [group_event_id], references: [id], onDelete: Cascade)
+  applicant   User       @relation("JoinApplicant", fields: [applicant_user_id], references: [id], onDelete: Cascade)
+
+  @@index([group_event_id, status])
+  @@map("group_join_requests")
+}
+
+model Notification {
+  id              String   @id @default(uuid()) @db.Uuid
+  user_id         String   @db.Uuid
+  type            String
+  title           String
+  body            String
+  read            Boolean  @default(false)
+  group_event_id  String?  @db.Uuid
+  join_request_id String?  @db.Uuid
+  created_at      DateTime @default(now())
+
+  user User @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@index([user_id, read])
+  @@map("notifications")
 }
 
 // ── NOUVELLES TABLES POUR LE PROFIL INTERACTIF ──

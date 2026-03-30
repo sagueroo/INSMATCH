@@ -19,7 +19,8 @@ const MyRequests = ({ onLogout }) => {
       const response = await axios.get('http://127.0.0.1:8000/requests', {
         headers: { Authorization: `Bearer ${token}` }
       });
-      setRequests(response.data);
+      const payload = response.data;
+      setRequests(Array.isArray(payload) ? payload : (payload.requests || []));
       setError('');
     } catch (err) {
       if (err.response?.status === 401) {

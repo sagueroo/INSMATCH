@@ -22,7 +22,7 @@ router.get('/', getCurrentUser, async (req, res) => {
                     where: {
                         start_time: { lte: now },
                         end_time: { gte: now },
-                        status: { in: ['scheduled', 'accepted'] },
+                        status: 'scheduled',
                     },
                     take: 1,
                 },

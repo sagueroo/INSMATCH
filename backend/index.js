@@ -9,6 +9,8 @@ const profileRouter = require('./routes/profile');
 const communityRouter = require('./routes/community');
 const venuesRouter = require('./routes/venues');
 const scheduleRouter = require('./routes/schedule');
+const groupEventsRouter = require('./routes/groupEvents');
+const notificationsRouter = require('./routes/notifications');
 
 const app = express();
 
@@ -29,6 +31,8 @@ app.use('/profile', profileRouter);
 app.use('/community', communityRouter);
 app.use('/venues', venuesRouter);
 app.use('/schedule', scheduleRouter);
+app.use('/group-events', groupEventsRouter);
+app.use('/notifications', notificationsRouter);
 
 // --- ROUTE DE TEST ---
 app.get('/', (req, res) => {
@@ -38,6 +42,7 @@ app.get('/', (req, res) => {
 // --- SYNCHRONISATION EMPLOI DU TEMPS ---
 const cron = require('node-cron');
 const { syncAllGroups } = require('./utils/syncTimetables');
+const { processCompletedMatches } = require('./utils/processCompletedMatches');
 
 // CRON JOB : Tous les soirs à 03:00 — fenêtre glissante J-1 supprimé / J+7 ajouté
 cron.schedule('0 3 * * *', async () => {
@@ -46,8 +51,18 @@ cron.schedule('0 3 * * *', async () => {
     console.log('🏁 Synchronisation terminée !');
 });
 
+// Matchs terminés → compteur par sport (UserSport) + statut completed
+cron.schedule('*/15 * * * *', async () => {
+    try {
+        await processCompletedMatches();
+    } catch (e) {
+        console.error('Erreur processCompletedMatches:', e.message);
+    }
+});
+
 // Sync initiale au démarrage du serveur (full sync, sans sliding)
 syncAllGroups().catch(err => console.error('Erreur sync initiale:', err.message));
+processCompletedMatches().catch(err => console.error('Erreur matchs complétés (init):', err.message));
 
 // --- LANCEMENT DU SERVEUR ---
 const PORT = process.env.PORT || 8000;

@@ -130,4 +130,53 @@ async function findCommonFreeTime(entity1, entity2, searchDate) {
   return freeTimes.filter(gap => gap.end - gap.start >= MIN_MS);
 }
 
-module.exports = { findCommonFreeTime, checkSlotAvailability, validateSearchDate, mergeIntervals };
+/**
+ * @param {import('@prisma/client').MatchRequest | { time_constraints?: unknown } | null | undefined} matchRequest
+ * @returns {{ weekend_not_before_hour?: number }}
+ */
+function parseTimeConstraints(matchRequest) {
+  if (!matchRequest) return {};
+  const raw = matchRequest.time_constraints;
+  if (raw == null || typeof raw !== 'object' || Array.isArray(raw)) return {};
+  return raw;
+}
+
+function isWeekendLocal(d) {
+  const day = new Date(d).getDay();
+  return day === 0 || day === 6;
+}
+
+/**
+ * Heure minimale le week-end pour les deux demandes (intersection stricte).
+ * @returns {number | null} 0–23, ou null si aucune contrainte
+ */
+function effectiveWeekendMinHour(reqA, reqB) {
+  const a = parseTimeConstraints(reqA).weekend_not_before_hour;
+  const b = parseTimeConstraints(reqB).weekend_not_before_hour;
+  const nums = [a, b].filter((x) => Number.isFinite(x) && x >= 0 && x <= 23);
+  if (nums.length === 0) return null;
+  return Math.max(...nums);
+}
+
+/**
+ * Le début du créneau respecte-t-il les contraintes (ex. week-end pas avant 15h) ?
+ */
+function slotStartSatisfiesTimeConstraints(slotStart, constraints) {
+  const h = constraints?.weekend_not_before_hour;
+  if (!Number.isFinite(h) || h < 0 || h > 23) return true;
+  if (!isWeekendLocal(slotStart)) return true;
+  const min = new Date(slotStart);
+  min.setHours(h, 0, 0, 0);
+  return slotStart.getTime() >= min.getTime();
+}
+
+module.exports = {
+  findCommonFreeTime,
+  checkSlotAvailability,
+  validateSearchDate,
+  mergeIntervals,
+  parseTimeConstraints,
+  effectiveWeekendMinHour,
+  slotStartSatisfiesTimeConstraints,
+  isWeekendLocal,
+};

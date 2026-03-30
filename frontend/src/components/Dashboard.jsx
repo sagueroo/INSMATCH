@@ -15,6 +15,7 @@ const Dashboard = ({ onLogout }) => {
   const [requestsLoading, setRequestsLoading] = useState(true);
   const [selectedRequest, setSelectedRequest] = useState(null);
   const [requestToDelete, setRequestToDelete] = useState(null);
+  const [respondLoading, setRespondLoading] = useState(false);
   const [profileData, setProfileData] = useState(null);
   const [profileLoading, setProfileLoading] = useState(true);
   const [communityData, setCommunityData] = useState(null);
@@ -248,11 +249,31 @@ const Dashboard = ({ onLogout }) => {
       const res = await axios.get('http://127.0.0.1:8000/requests', {
         headers: { Authorization: `Bearer ${token}` }
       });
-      setRequests(res.data);
+      const payload = res.data;
+      setRequests(Array.isArray(payload) ? payload : (payload.requests || []));
     } catch (err) {
       if (err.response?.status === 401) onLogout();
     } finally {
       setRequestsLoading(false);
+    }
+  };
+
+  const respondToMatch = async (requestId, action) => {
+    setRespondLoading(true);
+    try {
+      const token = localStorage.getItem('token');
+      await axios.post(
+        `http://127.0.0.1:8000/requests/${requestId}/respond`,
+        { action },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      setSelectedRequest(null);
+      fetchRequests();
+      fetchProfile();
+    } catch (err) {
+      alert(err.response?.data?.detail || 'Impossible d\'enregistrer ta réponse.');
+    } finally {
+      setRespondLoading(false);
     }
   };
 
@@ -342,18 +363,20 @@ const Dashboard = ({ onLogout }) => {
     },
   };
 
-  // ─── SPORT EMOJIS ───
-  const sportEmoji = (name) => {
+  // ─── SPORT ICONS ───
+  const renderSportIcon = (name, size = 20) => {
     const n = name?.toLowerCase() || '';
-    if (n.includes('tennis')) return '🎾';
-    if (n.includes('foot')) return '⚽';
-    if (n.includes('basket')) return '🏀';
-    if (n.includes('badminton')) return '🏸';
-    if (n.includes('volley')) return '🏐';
-    if (n.includes('rugby')) return '🏉';
-    if (n.includes('hand')) return '🤾';
-    if (n.includes('ping') || n.includes('table')) return '🏓';
-    return '🏅';
+    const color = '#E30613';
+    
+    if (n.includes('tennis')) return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15 15 0 0 1 0 20"/><path d="M12 2a15 15 0 0 0 0 20"/></svg>;
+    if (n.includes('foot')) return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20Z"/><path d="m12 12-4-2.5L5 12v5l3 2.5h8l3-2.5v-5l-3-2.5L12 12Z"/><path d="M12 2v3"/><path d="M5 12H2"/><path d="M22 12h-3"/><path d="m16 19.5 2 2.5"/><path d="m8 19.5-2 2.5"/><path d="m5 12-3-1"/><path d="m19 12 3-1"/><path d="m16 4.5 2-2.5"/><path d="m8 4.5-2-2.5"/></svg>;
+    if (n.includes('basket')) return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><path d="M3.5 12h17"/><path d="M12 3.5v17"/><path d="M12 3.5a12.5 12.5 0 0 1 0 17"/><path d="M12 3.5a12.5 12.5 0 0 0 0 17"/></svg>;
+    if (n.includes('badminton')) return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11.63 2.4a3.13 3.13 0 0 1 4.41 4.41L11 11.5l-4.5-4.5Z"/><path d="m7.5 13.5 2 2"/><path d="m10.5 16.5 2 2"/><path d="m13.5 19.5 2 2"/><path d="M12 12 2 22"/><path d="m7 7-5 5"/></svg>;
+    if (n.includes('volley')) return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><path d="m12 12 10 5"/><path d="m12 12-10 5"/><path d="m12 12 7-8"/><path d="m12 12-7-8"/><path d="M12 12v10"/><path d="M12 12V2"/></svg>;
+    if (n.includes('rugby')) return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2a15 15 0 0 1 0 20"/><path d="M12 2a15 15 0 0 0 0 20"/><path d="M2.3 8.3a15 15 0 0 0 0 7.4"/><path d="M21.7 8.3a15 15 0 0 1 0 7.4"/><path d="M12 2v20"/><path d="M2 12h20"/></svg>;
+    if (n.includes('hand')) return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 10V4.5a2.5 2.5 0 0 0-5 0V9"/><path d="M15 7V3.5a2.5 2.5 0 0 0-5 0V11"/><path d="M10 8.5V2.5a2.5 2.5 0 0 0-5 0V14c0 1.66 1.34 3 3 3h4.68l4 6H22v-3.32l-2-3V11"/></svg>;
+    if (n.includes('ping') || n.includes('table')) return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18.8 11 a5 5 0 1 0 -7.6 -6.6"/><path d="M14.5 12.5 L19 17"/><path d="M18.5 20 A1.5 1.5 0 1 1 20 18.5"/><circle cx="12" cy="12" r="10"/></svg>;
+    return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17h4v-2.34a5 5 0 0 0 1.5-3.66c0-2.76-2.24-5-5-5s-5 2.24-5 5a5 5 0 0 0 1.5 3.66Z"/></svg>;
   };
 
   // ━━━━━━━━━━━━ PANELS ━━━━━━━━━━━━
@@ -379,7 +402,7 @@ const Dashboard = ({ onLogout }) => {
             }}>
               <div onClick={() => setSelectedRequest(req)}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px' }}>
-                  <span style={{ fontSize: '16px' }}>{sportEmoji(req.sportName)}</span>
+                  <span style={{ display: 'flex' }}>{renderSportIcon(req.sportName, 18)}</span>
                   <span style={{ fontWeight: '700', fontSize: '14px', color: c.text }}>{req.sportName}</span>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '3px' }}>
@@ -653,12 +676,20 @@ const Dashboard = ({ onLogout }) => {
   };
 
   // ━━━━━━━━━━━━ CHAT ━━━━━━━━━━━━
-  const renderChat = () => (
+  const renderChat = () => {
+    const matchActionCount = requests.filter((r) => r.needsMyAction).length;
+    return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', borderBottom: `1px solid ${c.surfaceBorder}`, background: c.subHeaderBg, flexShrink: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <button className="hamburger-btn" onClick={() => setIsMatchDrawerOpen(true)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '4px', display: 'flex', lineHeight: 0 }}>
+          <button className="hamburger-btn" onClick={() => setIsMatchDrawerOpen(true)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '4px', display: 'flex', lineHeight: 0, position: 'relative' }}>
             <svg width="22" height="22" fill="none" stroke={c.text} strokeWidth="2" viewBox="0 0 24 24"><line x1="3" y1="6" x2="21" y2="6" /><line x1="3" y1="12" x2="21" y2="12" /><line x1="3" y1="18" x2="21" y2="18" /></svg>
+            {matchActionCount > 0 && (
+              <span style={{
+                position: 'absolute', top: '-6px', right: '-8px', minWidth: '18px', height: '18px', borderRadius: '999px',
+                background: '#E30613', color: 'white', fontSize: '10px', fontWeight: '800', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 5px', boxShadow: '0 1px 4px rgba(0,0,0,0.3)',
+              }}>{matchActionCount > 9 ? '9+' : matchActionCount}</span>
+            )}
           </button>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <svg width="18" height="18" fill="none" stroke={c.text} strokeWidth="2" viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" /></svg>
@@ -698,7 +729,8 @@ const Dashboard = ({ onLogout }) => {
         </div>
       </div>
     </div>
-  );
+    );
+  };
 
   // ━━━━━━━━━━━━ MATCHS DRAWER ━━━━━━━━━━━━
   const renderMatchsDrawer = () => {
@@ -739,7 +771,7 @@ const Dashboard = ({ onLogout }) => {
                         <span style={{ fontSize: '11px', color: c.textMuted }}>{formatDate(req.createdAt)}</span>
                       </div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-                        <div style={{ width: '48px', height: '48px', borderRadius: '12px', background: darkMode ? '#1a2744' : '#fef2f2', border: `1px solid ${darkMode ? '#253a5c' : '#fecaca'}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '24px', flexShrink: 0 }}>{sportEmoji(req.sportName)}</div>
+                        <div style={{ width: '48px', height: '48px', borderRadius: '12px', background: darkMode ? 'rgba(227,6,19,0.05)' : '#fef2f2', border: `1px solid ${darkMode ? 'rgba(227,6,19,0.2)' : '#fecaca'}`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>{renderSportIcon(req.sportName, 24)}</div>
                         <div style={{ flex: 1, minWidth: 0 }}>
                           <h3 style={{ fontSize: '15px', fontWeight: '700', color: c.text, margin: '0 0 4px' }}>{req.sportName}</h3>
                           <p style={{ fontSize: '12px', color: c.textMuted, margin: 0 }}>{req.location} · {req.time}</p>
@@ -1029,7 +1061,7 @@ const Dashboard = ({ onLogout }) => {
                     <div key={sport.id} style={{ background: c.cardBg, border: `1.5px solid ${active ? '#E30613' : c.cardBorder}`, borderRadius: '12px', padding: '12px 14px' }}>
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                          <span style={{ fontSize: '18px' }}>{sportEmoji(sport.name)}</span>
+                          <span style={{ display: 'flex' }}>{renderSportIcon(sport.name, 18)}</span>
                           <span style={{ fontSize: '14px', fontWeight: '600', color: c.text }}>{sport.name}</span>
                         </div>
                         <button onClick={() => toggleSport(sport.id)} style={{
@@ -1119,7 +1151,7 @@ const Dashboard = ({ onLogout }) => {
 
           {/* Sport Title */}
           <div style={{ padding: '20px', textAlign: 'center' }}>
-            <div style={{ fontSize: '48px', marginBottom: '8px' }}>{sportEmoji(req.sportName)}</div>
+            <div style={{ marginBottom: '8px', display: 'flex', justifyContent: 'center' }}>{renderSportIcon(req.sportName, 48)}</div>
             <h2 style={{ fontSize: '24px', fontWeight: '800', color: c.text, margin: '0 0 4px' }}>{req.sportName}</h2>
             <p style={{ fontSize: '13px', color: c.textMuted, margin: 0 }}>{st.description}</p>
           </div>
@@ -1175,34 +1207,38 @@ const Dashboard = ({ onLogout }) => {
               <p style={{ fontSize: '15px', fontWeight: '600', color: c.text, margin: 0 }}>{req.time}</p>
             </div>
 
-            {/* Partenaire (si status = matched) */}
-            {req.status === 'matched' && (
+            {/* Partenaire */}
+            {req.partner && (req.status === 'matched' || req.status === 'accepted') && (
               <div style={{ background: darkMode ? '#0a1628' : '#f9fafb', borderRadius: '14px', padding: '16px', border: `1px solid ${c.cardBorder}` }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' }}>
                   <svg width="18" height="18" fill="none" stroke="#3b82f6" strokeWidth="2" viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" /></svg>
-                  <span style={{ fontSize: '12px', fontWeight: '600', color: c.textMuted, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Partenaire trouvé</span>
+                  <span style={{ fontSize: '12px', fontWeight: '600', color: c.textMuted, textTransform: 'uppercase', letterSpacing: '0.05em' }}>{req.status === 'accepted' ? 'Partenaire' : 'Partenaire proposé'}</span>
                 </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                  <div style={{ width: '44px', height: '44px', borderRadius: '50%', background: '#002157', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                    <svg width="22" height="22" fill="none" stroke="rgba(255,255,255,0.7)" strokeWidth="1.5" viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" /></svg>
+                <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px' }}>
+                  <div style={{ width: '44px', height: '44px', borderRadius: '50%', background: '#002157', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, color: 'white', fontWeight: '700', fontSize: '15px' }}>
+                    {(req.partner.firstName?.[0] || '?')}{(req.partner.lastName?.[0] || '')}
                   </div>
-                  <div>
-                    <p style={{ fontSize: '15px', fontWeight: '600', color: c.text, margin: 0 }}>Joueur trouvé</p>
-                    <p style={{ fontSize: '12px', color: c.textMuted, margin: '2px 0 0' }}>En attente de ta confirmation</p>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <p style={{ fontSize: '15px', fontWeight: '600', color: c.text, margin: 0 }}>{req.partner.firstName} {req.partner.lastName}</p>
+                    <p style={{ fontSize: '12px', color: c.textMuted, margin: '4px 0 0', wordBreak: 'break-all' }}>{req.partner.email}</p>
+                    {req.status === 'matched' && !req.needsMyAction && (
+                      <p style={{ fontSize: '12px', color: '#3b82f6', margin: '8px 0 0' }}>Tu as accepté — en attente de l&apos;autre joueur.</p>
+                    )}
                   </div>
                 </div>
 
-                {/* Accept / Reject buttons */}
-                <div style={{ display: 'flex', gap: '10px', marginTop: '14px' }}>
-                  <button style={{ flex: 1, padding: '12px', borderRadius: '12px', border: 'none', background: '#22c55e', color: 'white', fontWeight: '700', fontSize: '14px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
-                    <svg width="16" height="16" fill="none" stroke="white" strokeWidth="2.5" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12" /></svg>
-                    Accepter
-                  </button>
-                  <button style={{ flex: 1, padding: '12px', borderRadius: '12px', border: `1.5px solid ${c.cardBorder}`, background: 'transparent', color: c.text, fontWeight: '700', fontSize: '14px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
-                    <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
-                    Refuser
-                  </button>
-                </div>
+                {req.status === 'matched' && req.needsMyAction && (
+                  <div style={{ display: 'flex', gap: '10px', marginTop: '14px' }}>
+                    <button type="button" disabled={respondLoading} onClick={() => respondToMatch(req.id, 'accept')} style={{ flex: 1, padding: '12px', borderRadius: '12px', border: 'none', background: respondLoading ? '#86efac' : '#22c55e', color: 'white', fontWeight: '700', fontSize: '14px', cursor: respondLoading ? 'wait' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
+                      <svg width="16" height="16" fill="none" stroke="white" strokeWidth="2.5" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12" /></svg>
+                      Accepter
+                    </button>
+                    <button type="button" disabled={respondLoading} onClick={() => respondToMatch(req.id, 'decline')} style={{ flex: 1, padding: '12px', borderRadius: '12px', border: `1.5px solid ${c.cardBorder}`, background: 'transparent', color: c.text, fontWeight: '700', fontSize: '14px', cursor: respondLoading ? 'wait' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
+                      <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
+                      Refuser
+                    </button>
+                  </div>
+                )}
               </div>
             )}
 
@@ -1213,7 +1249,7 @@ const Dashboard = ({ onLogout }) => {
             </div>
 
             {/* Bouton supprimer */}
-            <button onClick={() => deleteRequest(req.id)} style={{
+            <button onClick={() => setRequestToDelete(req.id)} style={{
               width: '100%', padding: '12px', borderRadius: '12px', marginTop: '10px',
               border: `1.5px solid #E30613`, background: 'transparent',
               color: '#E30613', fontWeight: '700', fontSize: '14px', cursor: 'pointer',
