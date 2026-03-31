@@ -4,6 +4,8 @@ import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { SportIcon } from './SportIcons.jsx';
+import { ConfirmDialog } from './ui/ConfirmDialog.jsx';
+import { EmptyState } from './ui/EmptyState.jsx';
 
 const Dashboard = ({ onLogout }) => {
   const [darkMode, setDarkMode] = useState(true);
@@ -428,7 +430,7 @@ const Dashboard = ({ onLogout }) => {
       {requestsLoading ? (
         <p style={{ color: c.textMuted, fontSize: '13px' }}>Chargement...</p>
       ) : requests.length === 0 ? (
-        <p style={{ color: c.textMuted, fontSize: '13px' }}>Aucune recherche pour le moment.</p>
+        <EmptyState emoji="🔍" title="Aucune recherche" hint="Crée une demande depuis l’onglet IA ou le volet Mes matchs." theme={c} darkMode={darkMode} padding="24px 12px" />
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
           {requests.map(req => (
@@ -808,11 +810,7 @@ const Dashboard = ({ onLogout }) => {
                 <p style={{ fontSize: '14px', marginTop: '12px' }}>Chargement...</p>
               </div>
             ) : requests.length === 0 ? (
-              <div style={{ textAlign: 'center', padding: '60px 20px' }}>
-                <div style={{ width: '80px', height: '80px', borderRadius: '50%', background: darkMode ? '#1a2744' : '#f3f4f6', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px', fontSize: '36px' }}>🏅</div>
-                <h3 style={{ fontSize: '18px', color: c.text, fontWeight: '700', margin: '0 0 8px' }}>Aucun match en cours</h3>
-                <p style={{ fontSize: '14px', color: c.textMuted, margin: 0, lineHeight: '1.5' }}>Discute avec l'Agent IA pour lancer ta première recherche !</p>
-              </div>
+              <EmptyState emoji="🏅" title="Aucun match en cours" hint="Discute avec l’Agent IA pour lancer ta première recherche." theme={c} darkMode={darkMode} padding="60px 20px" emojiSize="36px" />
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
                 {requests.map((req, index) => {
@@ -948,11 +946,7 @@ const Dashboard = ({ onLogout }) => {
               <p style={{ fontSize: '14px', marginTop: '12px' }}>Chargement...</p>
             </div>
           ) : todayEvents.length === 0 ? (
-            <div style={{ textAlign: 'center', padding: '60px 20px' }}>
-              <div style={{ width: '72px', height: '72px', borderRadius: '50%', background: darkMode ? '#1a2744' : '#f3f4f6', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px', fontSize: '32px' }}>📅</div>
-              <h3 style={{ fontSize: '17px', color: c.text, fontWeight: '700', margin: '0 0 6px' }}>Aucune activité ce jour</h3>
-              <p style={{ fontSize: '13px', color: c.textMuted }}>Ni cours ni match INSAMATCH de prévu.</p>
-            </div>
+            <EmptyState emoji="📅" title="Aucune activité ce jour" hint="Ni cours ni match INSAMATCH de prévu." theme={c} darkMode={darkMode} padding="60px 20px" />
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
               {todayEvents.map((ev, i) => {
@@ -1925,107 +1919,6 @@ const Dashboard = ({ onLogout }) => {
     { id: 'profil', label: 'Profil', icon: (a) => <svg width="22" height="22" fill="none" stroke={a ? '#E30613' : c.textMuted} strokeWidth="2" viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" /></svg> },
   ];
 
-  // ━━━━━━━━━━━━ ANNULER MATCH — CONFIRMATION MODAL ━━━━━━━━━━━━
-  const renderMatchCancelConfirmModal = () => {
-    if (!matchCancelConfirm) return null;
-    const { sportName, creneau } = matchCancelConfirm;
-    return (
-      <div
-        onClick={closeMatchCancelModal}
-        style={{
-          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-          background: c.overlay, zIndex: 3500,
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          padding: '20px', animation: 'fadeIn 0.2s ease',
-        }}
-      >
-        <div
-          onClick={(e) => e.stopPropagation()}
-          style={{
-            background: c.surface, borderRadius: '24px', width: '100%', maxWidth: '400px',
-            padding: '24px', border: `1px solid ${c.surfaceBorder}`,
-            boxShadow: '0 24px 80px rgba(0,0,0,0.25)',
-          }}
-        >
-          <div style={{ width: '56px', height: '56px', borderRadius: '50%', background: darkMode ? 'rgba(227,6,19,0.15)' : 'rgba(227,6,19,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
-            <svg width="28" height="28" fill="none" stroke="#E30613" strokeWidth="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" /><line x1="15" y1="9" x2="9" y2="15" /><line x1="9" y1="9" x2="15" y2="15" /></svg>
-          </div>
-          <h3 style={{ fontSize: '18px', fontWeight: '700', color: c.text, margin: '0 0 8px', textAlign: 'center' }}>Annuler ce match ?</h3>
-          <p style={{ fontSize: '14px', color: c.textMuted, margin: '0 0 8px', lineHeight: '1.55', textAlign: 'center' }}>
-            Le créneau sera libéré pour toi et ton partenaire. Vous pourrez relancer une recherche ensuite.
-          </p>
-          <div style={{
-            background: darkMode ? '#0a1628' : '#f9fafb', borderRadius: '12px', padding: '12px 14px', marginBottom: '16px',
-            border: `1px solid ${c.cardBorder}`,
-          }}>
-            <p style={{ fontSize: '13px', fontWeight: '700', color: c.text, margin: '0 0 4px' }}>{sportName}</p>
-            <p style={{ fontSize: '12px', color: c.textMuted, margin: 0 }}>{creneau}</p>
-          </div>
-          {matchCancelModalError ? (
-            <p style={{
-              fontSize: '13px', color: darkMode ? '#fecaca' : '#991b1b', background: darkMode ? '#450a0a' : '#fef2f2',
-              border: `1px solid ${darkMode ? '#7f1d1d' : '#fecaca'}`, borderRadius: '10px', padding: '10px 12px', marginBottom: '16px', lineHeight: '1.45',
-            }}>{matchCancelModalError}</p>
-          ) : null}
-          <div style={{ display: 'flex', gap: '12px' }}>
-            <button
-              type="button"
-              onClick={closeMatchCancelModal}
-              disabled={matchCancelLoading}
-              style={{
-                flex: 1, padding: '12px', background: 'transparent', border: `1.5px solid ${c.surfaceBorder}`,
-                borderRadius: '12px', color: c.text, fontWeight: '600', cursor: matchCancelLoading ? 'not-allowed' : 'pointer',
-                fontFamily: "'Inter', sans-serif", opacity: matchCancelLoading ? 0.6 : 1,
-              }}
-            >
-              Retour
-            </button>
-            <button
-              type="button"
-              onClick={confirmMatchCancellation}
-              disabled={matchCancelLoading}
-              style={{
-                flex: 1, padding: '12px', background: '#E30613', border: 'none', borderRadius: '12px',
-                color: 'white', fontWeight: '600', cursor: matchCancelLoading ? 'wait' : 'pointer',
-                fontFamily: "'Inter', sans-serif", opacity: matchCancelLoading ? 0.85 : 1,
-              }}
-            >
-              {matchCancelLoading ? 'Annulation…' : 'Oui, annuler'}
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  };
-
-  // ━━━━━━━━━━━━ DELETE CONFIRM MODAL ━━━━━━━━━━━━
-  const renderDeleteConfirmModal = () => {
-    if (!requestToDelete) return null;
-    return (
-      <div onClick={() => setRequestToDelete(null)} style={{
-        position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-        background: c.overlay, zIndex: 3000,
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        padding: '20px', animation: 'fadeIn 0.2s ease',
-      }}>
-        <div onClick={e => e.stopPropagation()} style={{
-          background: c.surface, borderRadius: '24px', width: '100%', maxWidth: '360px',
-          padding: '24px', border: `1px solid ${c.surfaceBorder}`,
-          boxShadow: '0 24px 80px rgba(0,0,0,0.25)', textAlign: 'center',
-        }}>
-          <div style={{ width: '56px', height: '56px', borderRadius: '50%', background: 'rgba(227,6,19,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
-            <svg width="28" height="28" fill="none" stroke="#E30613" strokeWidth="2" viewBox="0 0 24 24"><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /><line x1="10" y1="11" x2="10" y2="17" /><line x1="14" y1="11" x2="14" y2="17" /></svg>
-          </div>
-          <h3 style={{ fontSize: '18px', fontWeight: '700', color: c.text, margin: '0 0 10px' }}>Supprimer la recherche ?</h3>
-          <p style={{ fontSize: '14px', color: c.textMuted, margin: '0 0 24px', lineHeight: '1.5' }}>Êtes-vous sûr de vouloir supprimer cette recherche de partenaire ? Cette action est irréversible.</p>
-          <div style={{ display: 'flex', gap: '12px' }}>
-            <button onClick={() => setRequestToDelete(null)} style={{ flex: 1, padding: '12px', background: 'transparent', border: `1.5px solid ${c.surfaceBorder}`, borderRadius: '12px', color: c.text, fontWeight: '600', cursor: 'pointer', fontFamily: "'Inter', sans-serif" }}>Annuler</button>
-            <button onClick={confirmDeleteRequest} style={{ flex: 1, padding: '12px', background: '#E30613', border: 'none', borderRadius: '12px', color: 'white', fontWeight: '600', cursor: 'pointer', fontFamily: "'Inter', sans-serif" }}>Supprimer</button>
-          </div>
-        </div>
-      </div>
-    );
-  };
   // ━━━━━━━━━━━━ RENDER ━━━━━━━━━━━━
   return (
     <div style={{ width: '100%', height: '100vh', display: 'flex', flexDirection: 'column', fontFamily: "'Inter', sans-serif", background: c.bg, color: c.text, overflow: 'hidden' }}>
@@ -2107,8 +2000,49 @@ const Dashboard = ({ onLogout }) => {
       {renderDetailPopup()}
       {renderMatchsDrawer()}
       {renderEditProfileModal()}
-      {renderDeleteConfirmModal()}
-      {renderMatchCancelConfirmModal()}
+      <ConfirmDialog
+        open={!!requestToDelete}
+        onClose={() => setRequestToDelete(null)}
+        onConfirm={confirmDeleteRequest}
+        title="Supprimer la recherche ?"
+        description="Êtes-vous sûr de vouloir supprimer cette recherche de partenaire ? Cette action est irréversible."
+        iconVariant="delete"
+        zIndex={3000}
+        maxWidth={360}
+        descriptionMarginBottom={24}
+        theme={c}
+        isDark={darkMode}
+      />
+      <ConfirmDialog
+        open={!!matchCancelConfirm}
+        onClose={closeMatchCancelModal}
+        onConfirm={confirmMatchCancellation}
+        title="Annuler ce match ?"
+        description="Le créneau sera libéré pour toi et ton partenaire. Vous pourrez relancer une recherche ensuite."
+        error={matchCancelModalError}
+        cancelLabel="Retour"
+        confirmLabel={matchCancelLoading ? 'Annulation…' : 'Oui, annuler'}
+        confirmLoading={matchCancelLoading}
+        iconVariant="cancel"
+        zIndex={3500}
+        theme={c}
+        isDark={darkMode}
+      >
+        {matchCancelConfirm ? (
+          <div
+            style={{
+              background: darkMode ? '#0a1628' : '#f9fafb',
+              borderRadius: '12px',
+              padding: '12px 14px',
+              marginBottom: '16px',
+              border: `1px solid ${c.cardBorder}`,
+            }}
+          >
+            <p style={{ fontSize: '13px', fontWeight: '700', color: c.text, margin: '0 0 4px' }}>{matchCancelConfirm.sportName}</p>
+            <p style={{ fontSize: '12px', color: c.textMuted, margin: 0 }}>{matchCancelConfirm.creneau}</p>
+          </div>
+        ) : null}
+      </ConfirmDialog>
     </div>
   );
 };
