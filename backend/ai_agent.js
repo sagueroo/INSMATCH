@@ -5,6 +5,43 @@ const { tryPairAfterCreate } = require("./utils/matchmaking");
 const prisma = new PrismaClient();
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
+/** Fuseau affiché dans l’app / campus — évite que le LLM lise du UTC (ex. 10h Z = 12h à Paris). */
+const CAMPUS_TZ = 'Europe/Paris';
+
+function formatParisTimeHm(d) {
+    const parts = new Intl.DateTimeFormat('fr-FR', {
+        timeZone: CAMPUS_TZ,
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false,
+    }).formatToParts(d);
+    const h = parts.find((p) => p.type === 'hour')?.value ?? '00';
+    const m = parts.find((p) => p.type === 'minute')?.value ?? '00';
+    return `${h}h${m}`;
+}
+
+function formatParisDateLong(d) {
+    return new Intl.DateTimeFormat('fr-FR', {
+        timeZone: CAMPUS_TZ,
+        weekday: 'long',
+        day: 'numeric',
+        month: 'long',
+        year: 'numeric',
+    }).format(d);
+}
+
+/** Texte unique à recopier pour l’utilisateur (pas d’ISO / UTC). */
+function formatMatchCreneauForUser(start, end) {
+    const ds = formatParisDateLong(start);
+    const de = formatParisDateLong(end);
+    const t0 = formatParisTimeHm(start);
+    const t1 = formatParisTimeHm(end);
+    if (ds === de) {
+        return `${ds}, de ${t0} à ${t1} (heure locale Lyon/Paris, comme dans l’app)`;
+    }
+    return `du ${ds} ${t0} au ${de} ${t1} (heure locale Lyon/Paris)`;
+}
+
 async function getCampusInfo() {
     const sports = await prisma.sport.findMany({
         include: {
@@ -43,6 +80,51 @@ function sanitizeTimeConstraints(tc) {
     return undefined;
 }
 
+/**
+ * « Tennis » seul → sport Tennis. Ping-pong uniquement si tennis de table / ping-pong / table tennis explicites.
+ */
+async function resolveSportForAgent(sport_name) {
+    const raw = String(sport_name || '').trim();
+    if (!raw) return null;
+
+    const q = raw
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '');
+
+    const pingPongPhrases = [
+        'tennis de table',
+        'tennis-de-table',
+        'ping-pong',
+        'ping pong',
+        'pingpong',
+        'table tennis',
+    ];
+    for (const p of pingPongPhrases) {
+        if (q.includes(p)) {
+            return prisma.sport.findFirst({
+                where: { name: { equals: 'Ping-pong', mode: 'insensitive' } },
+            });
+        }
+    }
+    if (q.includes('tennis') && q.includes('table')) {
+        return prisma.sport.findFirst({
+            where: { name: { equals: 'Ping-pong', mode: 'insensitive' } },
+        });
+    }
+
+    if (/\btennis\b/.test(q) || q === 'tennis') {
+        const tennis = await prisma.sport.findFirst({
+            where: { name: { equals: 'Tennis', mode: 'insensitive' } },
+        });
+        if (tennis) return tennis;
+    }
+
+    return prisma.sport.findFirst({
+        where: { name: { contains: raw, mode: 'insensitive' } },
+    });
+}
+
 async function createMatchRequestTool(sport_name, venue_name, time_slot_notes, currentUser, time_constraints) {
     try {
         const rawVenue = typeof venue_name === 'string' ? venue_name.trim() : '';
@@ -50,9 +132,7 @@ async function createMatchRequestTool(sport_name, venue_name, time_slot_notes, c
 
         console.log(`\n⚙️ [JS] Demande : ${sport_name} / ${noVenue ? '(lieu à convenir)' : rawVenue} / ${time_slot_notes}`);
 
-        const sport = await prisma.sport.findFirst({
-            where: { name: { contains: sport_name, mode: "insensitive" } }
-        });
+        const sport = await resolveSportForAgent(sport_name);
         if (!sport) return JSON.stringify({ success: false, message: `Le sport '${sport_name}' n'existe pas.` });
 
         let venue = null;
@@ -139,7 +219,95 @@ async function createMatchRequestTool(sport_name, venue_name, time_slot_notes, c
     }
 }
 
+/**
+ * Lecture seule : demandes actives + matchs à venir (évite doublons et réponses inventées).
+ */
+async function getUserInsMatchContextTool(currentUser) {
+    try {
+        const userId = currentUser.id;
+        const pendingReqs = await prisma.matchRequest.findMany({
+            where: {
+                user_id: userId,
+                status: { in: ['pending', 'matched'] },
+            },
+            include: { sport: true, venue: true },
+            orderBy: { created_at: 'desc' },
+            take: 10,
+        });
+
+        const pending_search_requests = pendingReqs.map((r) => ({
+            sport: r.sport?.name || '?',
+            venue: r.venue?.name || null,
+            status: r.status,
+            notes: (r.availability_notes || '').slice(0, 200),
+        }));
+
+        const now = new Date();
+        const matches = await prisma.match.findMany({
+            where: {
+                OR: [
+                    { request_a: { user_id: userId } },
+                    { request_b: { user_id: userId } },
+                ],
+                status: { in: ['scheduled', 'pending_acceptance'] },
+                end_time: { gte: now },
+            },
+            include: {
+                venue: true,
+                request_a: {
+                    include: {
+                        user: { select: { first_name: true, last_name: true } },
+                        sport: true,
+                    },
+                },
+                request_b: {
+                    include: {
+                        user: { select: { first_name: true, last_name: true } },
+                        sport: true,
+                    },
+                },
+            },
+            orderBy: { start_time: 'asc' },
+            take: 15,
+        });
+
+        const upcoming_matches = matches.map((m) => {
+            const isA = m.request_a.user_id === userId;
+            const partner = isA ? m.request_b.user : m.request_a.user;
+            const sportName = m.request_a.sport?.name || m.request_b.sport?.name || '?';
+            const partnerLabel = partner
+                ? `${partner.first_name} ${partner.last_name}`.trim()
+                : '?';
+            return {
+                sport: sportName,
+                creneau_pour_l_utilisateur: formatMatchCreneauForUser(m.start_time, m.end_time),
+                venue: m.venue?.name || null,
+                partner: partnerLabel,
+                match_status: m.status,
+            };
+        });
+
+        return JSON.stringify({
+            fuseau_reference: CAMPUS_TZ,
+            pending_search_requests,
+            upcoming_matches,
+        });
+    } catch (error) {
+        console.error('Erreur getUserInsMatchContextTool:', error);
+        return JSON.stringify({ error: 'Impossible de lire le contexte matchmaking.' });
+    }
+}
+
 const toolsList = [
+    {
+        type: "function",
+        function: {
+            name: "get_user_ins_match_context",
+            description:
+                "Lit les demandes de recherche actives (pending/matched) et les matchs INSAMATCH à venir. Chaque match inclut creneau_pour_l_utilisateur (heure locale Europe/Paris, identique à l’app) — à recopier tel quel pour les heures.",
+            parameters: { type: 'object', properties: {}, required: [] },
+        },
+    },
     {
         type: "function",
         function: {
@@ -148,7 +316,11 @@ const toolsList = [
             parameters: {
                 type: "object",
                 properties: {
-                    sport_name: { type: "string", description: "Sport" },
+                    sport_name: {
+                        type: "string",
+                        description:
+                            "Sport exact côté appli. « Tennis » seul = tennis (court). Ping-pong / tennis de table uniquement si l’utilisateur dit tennis de table, ping-pong, ping pong ou table tennis (une seule entrée « Ping-pong » en base).",
+                    },
                     venue_name: { type: "string", description: "Terrain (nom du campus) ou vide si lieu à convenir" },
                     time_slot_notes: { type: "string", description: "Sans horaire précis : 'Horaire automatique (Emploi du temps)'" },
                     time_constraints: {
@@ -178,12 +350,24 @@ async function chatWithAgent(history, currentUser) {
 RÈGLES SPORTS :
 ${campusRules.join('\n')}
 
-IMPORTANT :
+OUTIL get_user_ins_match_context :
+- Appelle-le quand l'utilisateur demande ses matchs, ses recherches en cours, ou « où j'en suis » ; aussi avant une NOUVELLE recherche si tu veux vérifier qu'il n'a pas déjà une demande identique en cours.
+- Ne invente pas de données : si tu n'es pas sûr, appelle cet outil.
+- HORAIRES : pour chaque entrée de upcoming_matches, utilise UNIQUEMENT le champ creneau_pour_l_utilisateur pour dire l'heure à l'utilisateur (déjà en heure Lyon/Paris). Ne jamais convertir ni réinterpréter une heure UTC/ISO : ce champ est la source de vérité.
+
+CONFIRMATION avant create_match_request_tool :
+- Si la demande est vague (« du sport », « n'importe quoi »), pose des questions SANS outil jusqu'à avoir au moins le sport (et idéalement lieu ou dispo).
+- Pour une NOUVELLE recherche claire mais qui pourrait être ambiguë ou lourde (ex. plusieurs sports à la fois sans précision), résume en une phrase ce que tu vas créer et demande une confirmation (« oui », « vas-y », « confirme »). N'appelle create_match_request_tool qu'après cette confirmation dans la conversation.
+- Exception : la phrase est déjà précise (sport explicite + au moins lieu OU créneau/disponibilité claire, ex. « cherche foot au terrain X demain aprem ») — tu peux appeler create_match_request_tool directement sans étape de confirmation supplémentaire.
+- Après succès de l'outil, rappelle que l'emploi du temps INSAMATCH (onglet Emploi du temps) affiche aussi les matchs confirmés ou proposés.
+
+IMPORTANT (inchangé) :
 - Basket, Foot, sports d'équipe : plusieurs joueurs peuvent former une équipe sur un créneau commun. Un joueur qui arrive après peut être proposé pour rejoindre l'équipe existante (si son EDT a le créneau libre), pas seulement un 1 contre 1.
 - Terrain : si l'étudiant ne précise pas le lieu, appelle l'outil avec venue_name vide.
 - Sans horaire : mets "Horaire automatique (Emploi du temps)" dans time_slot_notes.
-- Contraintes horaires : si l’étudiant dit par ex. « pas avant 15h le week-end », remplis time_constraints avec { "weekend_not_before_hour": 15 } en plus du texte dans time_slot_notes.
-- Ne invente pas de nom de terrain.`;
+- Contraintes horaires : si l'étudiant dit par ex. « pas avant 15h le week-end », remplis time_constraints avec { "weekend_not_before_hour": 15 } en plus du texte dans time_slot_notes.
+- Ne invente pas de nom de terrain.
+- Tennis : « tennis » ou « tennis (court) » → sport_name \"Tennis\". Jamais Ping-pong sauf si l’utilisateur parle explicitement de tennis de table / ping-pong / table tennis → sport_name \"Ping-pong\".`;
 
         const messages = [{ role: "system", content: systemPrompt }, ...history];
 
@@ -211,6 +395,8 @@ IMPORTANT :
                         currentUser,
                         args.time_constraints
                     );
+                } else if (toolCall.function.name === "get_user_ins_match_context") {
+                    toolResult = await getUserInsMatchContextTool(currentUser);
                 } else {
                     toolResult = JSON.stringify({ error: "Outil inconnu" });
                 }

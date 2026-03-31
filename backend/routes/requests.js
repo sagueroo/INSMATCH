@@ -216,6 +216,67 @@ router.get('/', getCurrentUser, async (req, res) => {
     }
 });
 
+/**
+ * POST /requests/match/cancel
+ * Annule un match pour les deux joueurs (créneau proposé ou déjà confirmé).
+ * Doit être déclaré avant /:id/respond pour éviter tout conflit de route.
+ */
+router.post('/match/cancel', getCurrentUser, async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const { matchId } = req.body;
+
+        if (!matchId || typeof matchId !== 'string') {
+            return res.status(400).json({ detail: 'matchId requis.' });
+        }
+
+        const match = await prisma.match.findUnique({
+            where: { id: matchId },
+            include: {
+                request_a: { select: { user_id: true } },
+                request_b: { select: { user_id: true } },
+            },
+        });
+
+        if (!match) {
+            return res.status(404).json({ detail: 'Match introuvable.' });
+        }
+
+        const isParticipant =
+            match.request_a.user_id === userId || match.request_b.user_id === userId;
+        if (!isParticipant) {
+            return res.status(403).json({ detail: "Tu ne fais pas partie de ce match." });
+        }
+
+        if (!['scheduled', 'pending_acceptance'].includes(match.status)) {
+            return res.status(400).json({
+                detail: 'Ce match est terminé ou ne peut plus être annulé.',
+            });
+        }
+
+        await prisma.$transaction(async (tx) => {
+            await tx.match.delete({ where: { id: match.id } });
+            await tx.matchRequest.update({
+                where: { id: match.request_a_id },
+                data: { status: 'pending', proposed_time: null, group_event_id: null },
+            });
+            await tx.matchRequest.update({
+                where: { id: match.request_b_id },
+                data: { status: 'pending', proposed_time: null, group_event_id: null },
+            });
+        });
+
+        return res.json({
+            ok: true,
+            message:
+                'Match annulé pour toi et ton partenaire. Vous pouvez relancer une recherche.',
+        });
+    } catch (error) {
+        console.error('Erreur cancel match:', error);
+        res.status(500).json({ detail: "Impossible d'annuler ce match." });
+    }
+});
+
 router.post('/:id/respond', getCurrentUser, async (req, res) => {
     try {
         const userId = req.user.id;

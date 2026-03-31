@@ -8,14 +8,11 @@ const {
 } = require('./timetableMatch');
 
 const prisma = new PrismaClient();
+const { userToTimetableEntity } = require('./userTimetableEntity');
 
 const DEFAULT_DURATION_MIN = 60;
 const MIN_DURATION_MIN = 30;
 const MAX_DURATION_MIN = 180;
-
-function studentEntity(user) {
-  return { department: user.department, class_group: user.class_group };
-}
 
 function resolvedVenueIdPair(a, b) {
   return a.venue_id || b.venue_id || null;
@@ -69,8 +66,8 @@ async function findFirstCommonSlot(userA, userB, durationMs, requestA, requestB)
 
     try {
       const gaps = await findCommonFreeTime(
-        studentEntity(userA),
-        studentEntity(userB),
+        userToTimetableEntity(userA),
+        userToTimetableEntity(userB),
         searchDate
       );
       for (const gap of gaps) {
@@ -156,7 +153,7 @@ async function tryJoinExistingGroupEvent(newRequest) {
     if (max != null && ev.members.length >= max) continue;
 
     const { free } = await checkSlotAvailability(
-      studentEntity(newRequest.user),
+      userToTimetableEntity(newRequest.user),
       ev.start_time,
       ev.end_time
     );

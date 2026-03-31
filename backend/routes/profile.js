@@ -127,6 +127,8 @@ router.get('/', getCurrentUser, async (req, res) => {
                 phone: user.phone,
                 department: user.department,
                 class_group: user.class_group,
+                user_role: user.user_role || 'student',
+                professor_trigram: user.professor_trigram || null,
                 created_at: user.created_at,
             },
             stats: {
@@ -157,7 +159,7 @@ router.get('/', getCurrentUser, async (req, res) => {
  */
 router.put('/', getCurrentUser, async (req, res) => {
     try {
-        const { first_name, last_name, email, phone, class_group, department, sports } = req.body;
+        const { first_name, last_name, email, phone, class_group, department, sports, professor_trigram } = req.body;
         const userId = req.user.id;
 
         // Validation basique
@@ -165,17 +167,30 @@ router.put('/', getCurrentUser, async (req, res) => {
             return res.status(400).json({ detail: "Nom, prénom et email sont requis." });
         }
 
+        const data = {
+            first_name,
+            last_name,
+            email,
+            phone,
+        };
+
+        if (req.user.user_role === 'professor') {
+            if (professor_trigram != null && String(professor_trigram).trim()) {
+                const tri = String(professor_trigram).trim().toUpperCase();
+                if (!/^[A-Z]{2,6}$/.test(tri)) {
+                    return res.status(400).json({ detail: 'Trigramme invalide (2 à 6 lettres).' });
+                }
+                data.professor_trigram = tri;
+            }
+        } else {
+            data.class_group = class_group;
+            data.department = department;
+        }
+
         // Mettre à jour l'utilisateur de base
         const updatedUser = await prisma.user.update({
             where: { id: userId },
-            data: { 
-                first_name, 
-                last_name, 
-                email, 
-                phone, 
-                class_group, 
-                department 
-            },
+            data,
         });
 
         // Mettre à jour les sports si fournis

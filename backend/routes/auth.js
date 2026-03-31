@@ -49,7 +49,31 @@ async function getCurrentUser(req, res, next) {
  */
 router.post('/register', async (req, res) => {
     try {
-        const { first_name, last_name, email, password, department, class_group } = req.body;
+        const {
+            first_name,
+            last_name,
+            email,
+            password,
+            department,
+            class_group,
+            user_role,
+            professor_trigram,
+        } = req.body;
+
+        const role = user_role === 'professor' ? 'professor' : 'student';
+
+        if (role === 'professor') {
+            const tri = (professor_trigram && String(professor_trigram).trim().toUpperCase()) || '';
+            if (!/^[A-Z]{2,6}$/.test(tri)) {
+                return res.status(400).json({
+                    detail: 'Trigramme invalide (2 à 6 lettres, sans espaces).',
+                });
+            }
+        } else {
+            if (!department || !class_group) {
+                return res.status(400).json({ detail: 'Année et groupe sont requis pour un étudiant.' });
+            }
+        }
 
         // 1. On vérifie si l'email existe déjà
         const existingUser = await prisma.user.findUnique({
@@ -63,6 +87,11 @@ router.post('/register', async (req, res) => {
         // 2. On hache le mot de passe
         const hashedPassword = await security.getPasswordHash(password);
 
+        const triNormalized =
+            role === 'professor'
+                ? String(professor_trigram).trim().toUpperCase()
+                : null;
+
         // 3. On crée l'utilisateur dans Neon via Prisma
         const newUser = await prisma.user.create({
             data: {
@@ -70,8 +99,10 @@ router.post('/register', async (req, res) => {
                 last_name,
                 email,
                 password_hash: hashedPassword,
-                department,
-                class_group
+                user_role: role,
+                professor_trigram: triNormalized,
+                department: role === 'professor' ? '' : department,
+                class_group: role === 'professor' ? '' : class_group,
             }
         });
 
@@ -82,7 +113,9 @@ router.post('/register', async (req, res) => {
             last_name: newUser.last_name,
             email: newUser.email,
             department: newUser.department,
-            class_group: newUser.class_group
+            class_group: newUser.class_group,
+            user_role: newUser.user_role,
+            professor_trigram: newUser.professor_trigram,
         };
 
         res.status(201).json(userToReturn);
@@ -125,7 +158,9 @@ router.post('/login', async (req, res) => {
             user: {
                 first_name: user.first_name,
                 last_name: user.last_name,
-                id: user.id
+                id: user.id,
+                user_role: user.user_role || 'student',
+                professor_trigram: user.professor_trigram || null,
             }
         });
 

@@ -6,13 +6,10 @@ const {
   parseTimeConstraints,
   slotStartSatisfiesTimeConstraints,
 } = require('../utils/timetableMatch');
+const { userToTimetableEntity } = require('../utils/userTimetableEntity');
 
 const router = express.Router();
 const prisma = new PrismaClient();
-
-function studentEntity(user) {
-  return { department: user.department, class_group: user.class_group };
-}
 
 function formatSlotLabel(start, end) {
   if (!start || !end) return '';
@@ -262,7 +259,7 @@ router.post('/:id/join', getCurrentUser, async (req, res) => {
     }
 
     const user = await prisma.user.findUnique({ where: { id: userId } });
-    const { free } = await checkSlotAvailability(studentEntity(user), event.start_time, event.end_time);
+    const { free } = await checkSlotAvailability(userToTimetableEntity(user), event.start_time, event.end_time);
     if (!free) {
       return res.status(400).json({
         detail: 'Ce créneau chevauche tes cours : impossible de rejoindre.',

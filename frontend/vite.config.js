@@ -2,7 +2,7 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 
-/** En dev, le navigateur n’appelle que :5173 ; Vite relaie vers l’API (évite le blocage Chrome localhost → 127.0.0.1). */
+/** Backend en dev (proxy Vite). Sur la VM : http://127.0.0.1:8000 */
 const apiTarget = process.env.VITE_DEV_API_PROXY ?? 'http://127.0.0.1:8000'
 
 export default defineConfig({
@@ -11,6 +11,9 @@ export default defineConfig({
     tailwindcss(),
   ],
   server: {
+    host: true,
+    // HTTPS + domaine : sans ça Vite affiche "Blocked request... allowedHosts"
+    allowedHosts: ['localhost', '127.0.0.1', 'insmatch.swiloz.com'],
     proxy: {
       '/auth': { target: apiTarget, changeOrigin: true },
       '/chat': { target: apiTarget, changeOrigin: true },

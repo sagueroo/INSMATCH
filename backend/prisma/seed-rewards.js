@@ -8,7 +8,7 @@ const prisma = new PrismaClient();
 async function main() {
     const rewards = [
         { name: 'Premier Match', description: 'Complétez votre premier match', condition: 'matches_total:1' },
-        { name: 'Sportif Régulier', description: '10 matchs en un mois', condition: 'matches_total:10' },
+        { name: 'Sportif Régulier', description: '10 matchs au total', condition: 'matches_total:10' },
         { name: 'Champion Social', description: '20 partenaires différents', condition: 'partners:20' },
         { name: 'Marathonien', description: '50 matchs au total', condition: 'matches_total:50' },
     ];

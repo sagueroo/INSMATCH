@@ -47,28 +47,45 @@ function validateSearchDate(searchDate) {
 }
 
 /**
- * Builds a Prisma WHERE clause for a given entity.
- * Accepts:
- *   - Student group: { type: 'student', department: '3', class_group: '1' }
- *   - Professor:     { type: 'professor', trigram: 'CGO' }
+ * Filtre Prisma : événements où `professor` contient le trigramme (seul ou dans "CGO,AHI").
  */
-function buildEntityQuery(entity) {
-  if (entity.type === 'professor') {
-    return { professor: { contains: entity.trigram } };
-  }
-  return { department: entity.department, class_group: entity.class_group };
+function professorMatchesTrigramWhere(trigram) {
+  const t = String(trigram).trim().toUpperCase();
+  return {
+    AND: [
+      { professor: { not: null } },
+      {
+        OR: [
+          { professor: { equals: t, mode: 'insensitive' } },
+          { professor: { startsWith: `${t},`, mode: 'insensitive' } },
+          { professor: { endsWith: `,${t}`, mode: 'insensitive' } },
+          { professor: { contains: `,${t},`, mode: 'insensitive' } },
+        ],
+      },
+    ],
+  };
 }
 
 /**
  * Get all busy intervals for a single entity on a given day.
+ * entity: { type: 'student', department, class_group } | { type: 'professor', trigram }
  */
 async function getBusyIntervals(entity, startOfDay, endOfDay) {
+  const timeFilter = {
+    start_time: { gte: startOfDay },
+    end_time: { lte: endOfDay },
+  };
+  const where =
+    entity.type === 'professor'
+      ? { AND: [professorMatchesTrigramWhere(entity.trigram), timeFilter] }
+      : {
+          department: entity.department,
+          class_group: entity.class_group,
+          ...timeFilter,
+        };
+
   const events = await prisma.classEvent.findMany({
-    where: {
-      ...buildEntityQuery(entity),
-      start_time: { gte: startOfDay },
-      end_time: { lte: endOfDay },
-    },
+    where,
     orderBy: { start_time: 'asc' },
   });
   return events.map(e => ({ start: e.start_time, end: e.end_time }));
@@ -179,4 +196,5 @@ module.exports = {
   effectiveWeekendMinHour,
   slotStartSatisfiesTimeConstraints,
   isWeekendLocal,
+  professorMatchesTrigramWhere,
 };

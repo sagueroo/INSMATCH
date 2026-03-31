@@ -185,6 +185,7 @@ router.get('/search', getCurrentUser, async (req, res) => {
                     { last_name: { contains: searchQuery, mode: 'insensitive' } },
                     { class_group: { contains: searchQuery, mode: 'insensitive' } },
                     { department: { contains: searchQuery, mode: 'insensitive' } },
+                    { professor_trigram: { contains: searchQuery, mode: 'insensitive' } },
                     { userSports: { some: { sport: { name: { contains: searchQuery, mode: 'insensitive' } } } } }
                 ],
             },
@@ -208,6 +209,8 @@ router.get('/search', getCurrentUser, async (req, res) => {
                 lastName: u.last_name,
                 classGroup: u.class_group,
                 department: u.department,
+                userRole: u.user_role || 'student',
+                professorTrigram: u.professor_trigram || null,
                 mainSport: mainSport ? mainSport.sport.name : null,
                 level: mainSport ? mainSport.level : 'Débutant',
                 totalMatches
@@ -319,6 +322,8 @@ router.get('/users/:id/profile', getCurrentUser, async (req, res) => {
                 phone: user.phone,
                 department: user.department,
                 class_group: user.class_group,
+                user_role: user.user_role || 'student',
+                professor_trigram: user.professor_trigram || null,
                 created_at: user.created_at,
             },
             stats: {

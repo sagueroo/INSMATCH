@@ -3,6 +3,7 @@ import axios from 'axios';
 import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
+import { SportIcon } from './SportIcons.jsx';
 
 const Dashboard = ({ onLogout }) => {
   const [darkMode, setDarkMode] = useState(true);
@@ -16,6 +17,10 @@ const Dashboard = ({ onLogout }) => {
   const [selectedRequest, setSelectedRequest] = useState(null);
   const [requestToDelete, setRequestToDelete] = useState(null);
   const [respondLoading, setRespondLoading] = useState(false);
+  const [matchCancelLoading, setMatchCancelLoading] = useState(false);
+  /** Modale « Annuler le match » : null ou { matchId, sportName, creneau } */
+  const [matchCancelConfirm, setMatchCancelConfirm] = useState(null);
+  const [matchCancelModalError, setMatchCancelModalError] = useState('');
   const [profileData, setProfileData] = useState(null);
   const [profileLoading, setProfileLoading] = useState(true);
   const [communityData, setCommunityData] = useState(null);
@@ -142,15 +147,20 @@ const Dashboard = ({ onLogout }) => {
     setEditError('');
     try {
       const token = localStorage.getItem('token');
-      await axios.put('/profile', {
+      const payload = {
         first_name: editForm.first_name,
         last_name: editForm.last_name,
         email: editForm.email,
         phone: editForm.phone,
-        department: editForm.department,
-        class_group: editForm.class_group,
         sports: editForm.sports,
-      }, { headers: { Authorization: `Bearer ${token}` } });
+      };
+      if (profileData?.user?.user_role === 'professor') {
+        payload.professor_trigram = editForm.professor_trigram;
+      } else {
+        payload.department = editForm.department;
+        payload.class_group = editForm.class_group;
+      }
+      await axios.put('/profile', payload, { headers: { Authorization: `Bearer ${token}` } });
       await fetchProfile();
       setIsEditingProfile(false);
     } catch (err) {
@@ -171,6 +181,7 @@ const Dashboard = ({ onLogout }) => {
       phone: user.phone || '',
       department: user.department || '',
       class_group: user.class_group || '',
+      professor_trigram: user.professor_trigram || '',
       sports: sports.map(s => ({ sport_id: s.id, level: s.level })),
       availableSports: availableSports || [],
     });
@@ -277,6 +288,48 @@ const Dashboard = ({ onLogout }) => {
     }
   };
 
+  const openMatchCancelModal = (matchId, sportName, creneau) => {
+    if (!matchId) return;
+    setMatchCancelModalError('');
+    setMatchCancelConfirm({
+      matchId,
+      sportName: sportName || 'Sport',
+      creneau: creneau || 'Créneau à confirmer',
+    });
+  };
+
+  const closeMatchCancelModal = () => {
+    if (matchCancelLoading) return;
+    setMatchCancelConfirm(null);
+    setMatchCancelModalError('');
+  };
+
+  const confirmMatchCancellation = async () => {
+    const mid = matchCancelConfirm?.matchId;
+    if (!mid || matchCancelLoading) return;
+    setMatchCancelLoading(true);
+    setMatchCancelModalError('');
+    try {
+      const token = localStorage.getItem('token');
+      await axios.post(
+        '/requests/match/cancel',
+        { matchId: mid },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      setMatchCancelConfirm(null);
+      setSelectedRequest(null);
+      fetchRequests();
+      fetchSchedule();
+      fetchProfile();
+    } catch (err) {
+      setMatchCancelModalError(
+        err.response?.data?.detail || 'Impossible d\'annuler ce match. Réessaie dans un instant.'
+      );
+    } finally {
+      setMatchCancelLoading(false);
+    }
+  };
+
   const sendMessage = async (e) => {
     e?.preventDefault();
     if (!input.trim() || isLoading) return;
@@ -363,22 +416,6 @@ const Dashboard = ({ onLogout }) => {
     },
   };
 
-  // ─── SPORT ICONS ───
-  const renderSportIcon = (name, size = 20) => {
-    const n = name?.toLowerCase() || '';
-    const color = '#E30613';
-    
-    if (n.includes('tennis')) return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15 15 0 0 1 0 20"/><path d="M12 2a15 15 0 0 0 0 20"/></svg>;
-    if (n.includes('foot')) return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20Z"/><path d="m12 12-4-2.5L5 12v5l3 2.5h8l3-2.5v-5l-3-2.5L12 12Z"/><path d="M12 2v3"/><path d="M5 12H2"/><path d="M22 12h-3"/><path d="m16 19.5 2 2.5"/><path d="m8 19.5-2 2.5"/><path d="m5 12-3-1"/><path d="m19 12 3-1"/><path d="m16 4.5 2-2.5"/><path d="m8 4.5-2-2.5"/></svg>;
-    if (n.includes('basket')) return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><path d="M3.5 12h17"/><path d="M12 3.5v17"/><path d="M12 3.5a12.5 12.5 0 0 1 0 17"/><path d="M12 3.5a12.5 12.5 0 0 0 0 17"/></svg>;
-    if (n.includes('badminton')) return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11.63 2.4a3.13 3.13 0 0 1 4.41 4.41L11 11.5l-4.5-4.5Z"/><path d="m7.5 13.5 2 2"/><path d="m10.5 16.5 2 2"/><path d="m13.5 19.5 2 2"/><path d="M12 12 2 22"/><path d="m7 7-5 5"/></svg>;
-    if (n.includes('volley')) return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><path d="m12 12 10 5"/><path d="m12 12-10 5"/><path d="m12 12 7-8"/><path d="m12 12-7-8"/><path d="M12 12v10"/><path d="M12 12V2"/></svg>;
-    if (n.includes('rugby')) return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2a15 15 0 0 1 0 20"/><path d="M12 2a15 15 0 0 0 0 20"/><path d="M2.3 8.3a15 15 0 0 0 0 7.4"/><path d="M21.7 8.3a15 15 0 0 1 0 7.4"/><path d="M12 2v20"/><path d="M2 12h20"/></svg>;
-    if (n.includes('hand')) return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 10V4.5a2.5 2.5 0 0 0-5 0V9"/><path d="M15 7V3.5a2.5 2.5 0 0 0-5 0V11"/><path d="M10 8.5V2.5a2.5 2.5 0 0 0-5 0V14c0 1.66 1.34 3 3 3h4.68l4 6H22v-3.32l-2-3V11"/></svg>;
-    if (n.includes('ping') || n.includes('table')) return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18.8 11 a5 5 0 1 0 -7.6 -6.6"/><path d="M14.5 12.5 L19 17"/><path d="M18.5 20 A1.5 1.5 0 1 1 20 18.5"/><circle cx="12" cy="12" r="10"/></svg>;
-    return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17h4v-2.34a5 5 0 0 0 1.5-3.66c0-2.76-2.24-5-5-5s-5 2.24-5 5a5 5 0 0 0 1.5 3.66Z"/></svg>;
-  };
-
   // ━━━━━━━━━━━━ PANELS ━━━━━━━━━━━━
 
   // Search Panel (desktop left sidebar)
@@ -402,7 +439,7 @@ const Dashboard = ({ onLogout }) => {
             }}>
               <div onClick={() => setSelectedRequest(req)}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px' }}>
-                  <span style={{ display: 'flex' }}>{renderSportIcon(req.sportName, 18)}</span>
+                  <span style={{ display: 'flex' }}><SportIcon name={req.sportName} size={18} /></span>
                   <span style={{ fontWeight: '700', fontSize: '14px', color: c.text }}>{req.sportName}</span>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '3px' }}>
@@ -483,8 +520,17 @@ const Dashboard = ({ onLogout }) => {
             <svg width="44" height="44" fill="none" stroke="rgba(255,255,255,0.85)" strokeWidth="1.5" viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" /></svg>
           </div>
           <h2 style={{ color: 'white', fontSize: '22px', fontWeight: '700', margin: '0 0 4px' }}>{user.first_name} {user.last_name}</h2>
-          <p style={{ color: 'rgba(255,255,255,0.75)', fontSize: '14px', margin: '0 0 2px' }}>{user.department}ème année de TC</p>
-          <p style={{ color: 'rgba(255,255,255,0.55)', fontSize: '12px', margin: '0 0 18px' }}>Groupe {user.class_group}</p>
+          {user.user_role === 'professor' ? (
+            <>
+              <p style={{ color: 'rgba(255,255,255,0.85)', fontSize: '14px', margin: '0 0 2px' }}>Enseignant</p>
+              <p style={{ color: 'rgba(255,255,255,0.6)', fontSize: '12px', margin: '0 0 18px' }}>Trigramme {user.professor_trigram || '—'}</p>
+            </>
+          ) : (
+            <>
+              <p style={{ color: 'rgba(255,255,255,0.75)', fontSize: '14px', margin: '0 0 2px' }}>{user.department}ème année de TC</p>
+              <p style={{ color: 'rgba(255,255,255,0.55)', fontSize: '12px', margin: '0 0 18px' }}>Groupe {user.class_group}</p>
+            </>
+          )}
 
           {/* Modifier button */}
           <button onClick={openEditForm} style={{
@@ -551,6 +597,13 @@ const Dashboard = ({ onLogout }) => {
             {sports.map((sport, i) => {
               const maxMatches = 20; // Objectif de base
               const levelColor = getLevelColor(sport.level);
+              const isAdvanced = sport.level === 'Avancé';
+              const levelBadgeBg = isAdvanced
+                ? '#002157'
+                : levelColor === '#E30613'
+                  ? (darkMode ? '#2a0a0e' : '#fef2f2')
+                  : (darkMode ? '#1a2030' : '#f3f4f6');
+              const levelBadgeColor = isAdvanced ? '#ffffff' : levelColor;
               return (
                 <div key={i} style={{
                   background: c.bg, border: `1px solid ${c.cardBorder}`, borderRadius: '14px',
@@ -563,7 +616,7 @@ const Dashboard = ({ onLogout }) => {
                     border: `1px solid ${darkMode ? '#253a5c' : '#fecaca'}`,
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
                   }}>
-                    <svg width="20" height="20" fill="none" stroke="#E30613" strokeWidth="1.5" viewBox="0 0 24 24"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5C7 4 7 7 7 7" /><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5C17 4 17 7 17 7" /><path d="M4 22h16" /><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z" /></svg>
+                    <SportIcon name={sport.name} size={20} />
                   </div>
                   {/* Info */}
                   <div style={{ flex: 1, minWidth: 0 }}>
@@ -573,8 +626,8 @@ const Dashboard = ({ onLogout }) => {
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                       <span style={{
                         fontSize: '10px', fontWeight: '700', padding: '2px 8px', borderRadius: '6px',
-                        background: levelColor === '#002157' ? (darkMode ? '#0c1f3f' : '#eff6ff') : levelColor === '#E30613' ? (darkMode ? '#2a0a0e' : '#fef2f2') : (darkMode ? '#1a2030' : '#f3f4f6'),
-                        color: levelColor,
+                        background: levelBadgeBg,
+                        color: levelBadgeColor,
                       }}>{sport.level}</span>
                       <span style={{ fontSize: '12px', color: c.textMuted }}>{sport.matchCount} matchs</span>
                     </div>
@@ -771,7 +824,7 @@ const Dashboard = ({ onLogout }) => {
                         <span style={{ fontSize: '11px', color: c.textMuted }}>{formatDate(req.createdAt)}</span>
                       </div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-                        <div style={{ width: '48px', height: '48px', borderRadius: '12px', background: darkMode ? 'rgba(227,6,19,0.05)' : '#fef2f2', border: `1px solid ${darkMode ? 'rgba(227,6,19,0.2)' : '#fecaca'}`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>{renderSportIcon(req.sportName, 24)}</div>
+                        <div style={{ width: '48px', height: '48px', borderRadius: '12px', background: darkMode ? 'rgba(227,6,19,0.05)' : '#fef2f2', border: `1px solid ${darkMode ? 'rgba(227,6,19,0.2)' : '#fecaca'}`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}><SportIcon name={req.sportName} size={24} /></div>
                         <div style={{ flex: 1, minWidth: 0 }}>
                           <h3 style={{ fontSize: '15px', fontWeight: '700', color: c.text, margin: '0 0 4px' }}>{req.sportName}</h3>
                           <p style={{ fontSize: '12px', color: c.textMuted, margin: 0 }}>{req.location} · {req.time}</p>
@@ -817,6 +870,7 @@ const Dashboard = ({ onLogout }) => {
     // Type badge colors — exactly matching mockup
     const typeColor = (t) => {
       const u = (t || '').toUpperCase();
+      if (u === 'MATCH') return { bg: '#047857', text: 'white' };
       if (u === 'CM') return { bg: '#E30613', text: 'white' };
       if (u === 'TD') return { bg: '#002157', text: 'white' };
       if (u === 'TP') return { bg: '#6b7280', text: 'white' };
@@ -851,10 +905,13 @@ const Dashboard = ({ onLogout }) => {
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
             <div>
               <h2 style={{ color: 'white', fontSize: '20px', fontWeight: '800', margin: '0 0 6px' }}>Emploi du Temps</h2>
+              <p style={{ color: 'rgba(255,255,255,0.65)', fontSize: '12px', margin: '0 0 4px' }}>Cours INSA + matchs INSAMATCH</p>
               <p style={{ color: 'rgba(255,255,255,0.75)', fontSize: '13px', margin: '0 0 2px' }}>{fmtWeek}</p>
               {scheduleData && (
                 <p style={{ color: 'rgba(255,255,255,0.55)', fontSize: '12px', margin: 0 }}>
-                  {scheduleData.department}TC Groupe {scheduleData.class_group} – Télécommunications
+                  {scheduleData.user_role === 'professor' && scheduleData.professor_trigram
+                    ? `Enseignant · trigramme ${scheduleData.professor_trigram}`
+                    : `${scheduleData.department}TC Groupe ${scheduleData.class_group} – Télécommunications`}
                 </p>
               )}
             </div>
@@ -893,20 +950,76 @@ const Dashboard = ({ onLogout }) => {
           ) : todayEvents.length === 0 ? (
             <div style={{ textAlign: 'center', padding: '60px 20px' }}>
               <div style={{ width: '72px', height: '72px', borderRadius: '50%', background: darkMode ? '#1a2744' : '#f3f4f6', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px', fontSize: '32px' }}>📅</div>
-              <h3 style={{ fontSize: '17px', color: c.text, fontWeight: '700', margin: '0 0 6px' }}>Aucun cours ce jour</h3>
-              <p style={{ fontSize: '13px', color: c.textMuted }}>Profite de ta journée libre !</p>
+              <h3 style={{ fontSize: '17px', color: c.text, fontWeight: '700', margin: '0 0 6px' }}>Aucune activité ce jour</h3>
+              <p style={{ fontSize: '13px', color: c.textMuted }}>Ni cours ni match INSAMATCH de prévu.</p>
             </div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
               {todayEvents.map((ev, i) => {
+                const isMatch = ev.source === 'insmatch';
                 const tc = typeColor(ev.type);
                 const displayTitle = ev.subject || ev.title;
                 const subtitle = ev.subtitle;
                 const prof = ev.professor || 'N/A';
                 const loc = ev.location || 'N/A';
+                const matchStatusLabel = ev.ins_match_status === 'pending_acceptance' ? 'À confirmer (Mes matchs)' : 'Confirmé';
+
+                if (isMatch) {
+                  const sportFromTitle = (displayTitle || '').replace(/^Match INSAMATCH ·\s*/i, '').trim() || 'Sport';
+                  return (
+                    <div key={`insmatch-${ev.id}-${i}`} style={{
+                      background: c.surface,
+                      border: `1px solid ${darkMode ? '#14532d' : '#a7f3d0'}`,
+                      borderRadius: '16px',
+                      padding: '16px 18px',
+                      boxShadow: darkMode ? 'none' : '0 1px 4px rgba(0,0,0,0.06)',
+                    }}>
+                      <div style={{ marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        <span style={{ display: 'flex' }}><SportIcon name={sportFromTitle} size={22} /></span>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <h3 style={{ fontSize: '15px', fontWeight: '700', color: c.text, margin: '0 0 6px' }}>
+                            {displayTitle}
+                            {subtitle ? <span style={{ fontWeight: '400', color: c.textMuted, fontSize: '14px' }}> — {subtitle}</span> : null}
+                          </h3>
+                          <span style={{
+                            display: 'inline-block',
+                            fontSize: '11px', fontWeight: '700',
+                            padding: '3px 10px', borderRadius: '8px',
+                            background: tc.bg, color: tc.text,
+                            letterSpacing: '0.5px',
+                          }}>MATCH</span>
+                          {ev.ins_match_status && (
+                            <span style={{
+                              display: 'inline-block',
+                              marginLeft: '8px',
+                              fontSize: '11px', fontWeight: '600',
+                              padding: '3px 10px', borderRadius: '8px',
+                              background: darkMode ? '#1e3a2f' : '#ecfdf5',
+                              color: darkMode ? '#a7f3d0' : '#047857',
+                            }}>{matchStatusLabel}</span>
+                          )}
+                        </div>
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '7px', marginTop: '8px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: c.textMuted }}>
+                          <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                            <circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" />
+                          </svg>
+                          {formatHour(ev.start_time)} – {formatHour(ev.end_time)}
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: c.textMuted }}>
+                          <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                            <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" /><circle cx="12" cy="10" r="3" />
+                          </svg>
+                          {loc !== 'N/A' ? loc : 'Lieu à préciser'}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                }
 
                 return (
-                  <div key={ev.id || i} style={{
+                  <div key={`course-${ev.id}-${i}`} style={{
                     background: c.surface,
                     border: `1px solid ${c.surfaceBorder}`,
                     borderRadius: '16px',
@@ -968,6 +1081,7 @@ const Dashboard = ({ onLogout }) => {
   // ━━━━━━━━━━━━ EDIT PROFILE MODAL ━━━━━━━━━━━━
   const renderEditProfileModal = () => {
     if (!isEditingProfile || !editForm) return null;
+    const editIsProfessor = profileData?.user?.user_role === 'professor';
     const levels = ['Débutant', 'Intermédiaire', 'Avancé'];
     const inputStyle = {
       width: '100%', padding: '10px 14px', borderRadius: '10px',
@@ -1040,16 +1154,29 @@ const Dashboard = ({ onLogout }) => {
               <input style={inputStyle} value={editForm.phone} onChange={e => setEditForm(f => ({ ...f, phone: e.target.value }))} placeholder="+33 6 12 34 56 78" />
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '14px' }}>
-              <div>
-                <label style={labelStyle}>Département</label>
-                <input style={inputStyle} value={editForm.department} onChange={e => setEditForm(f => ({ ...f, department: e.target.value }))} placeholder="3TC" />
+            {editIsProfessor ? (
+              <div style={fieldStyle}>
+                <label style={labelStyle}>Trigramme</label>
+                <input
+                  style={inputStyle}
+                  value={editForm.professor_trigram || ''}
+                  onChange={e => setEditForm(f => ({ ...f, professor_trigram: e.target.value.toUpperCase().replace(/[^A-Za-z]/g, '') }))}
+                  placeholder="Ex : CGO"
+                  maxLength={6}
+                />
               </div>
-              <div>
-                <label style={labelStyle}>Groupe</label>
-                <input style={inputStyle} value={editForm.class_group} onChange={e => setEditForm(f => ({ ...f, class_group: e.target.value }))} placeholder="1" />
+            ) : (
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '14px' }}>
+                <div>
+                  <label style={labelStyle}>Année</label>
+                  <input style={inputStyle} value={editForm.department} onChange={e => setEditForm(f => ({ ...f, department: e.target.value }))} placeholder="3 ou 4" />
+                </div>
+                <div>
+                  <label style={labelStyle}>Groupe</label>
+                  <input style={inputStyle} value={editForm.class_group} onChange={e => setEditForm(f => ({ ...f, class_group: e.target.value }))} placeholder="1" />
+                </div>
               </div>
-            </div>
+            )}
 
             {/* Sports */}
             <div style={{ marginBottom: '20px' }}>
@@ -1061,7 +1188,7 @@ const Dashboard = ({ onLogout }) => {
                     <div key={sport.id} style={{ background: c.cardBg, border: `1.5px solid ${active ? '#E30613' : c.cardBorder}`, borderRadius: '12px', padding: '12px 14px' }}>
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                          <span style={{ display: 'flex' }}>{renderSportIcon(sport.name, 18)}</span>
+                          <span style={{ display: 'flex' }}><SportIcon name={sport.name} size={18} /></span>
                           <span style={{ fontSize: '14px', fontWeight: '600', color: c.text }}>{sport.name}</span>
                         </div>
                         <button onClick={() => toggleSport(sport.id)} style={{
@@ -1151,7 +1278,7 @@ const Dashboard = ({ onLogout }) => {
 
           {/* Sport Title */}
           <div style={{ padding: '20px', textAlign: 'center' }}>
-            <div style={{ marginBottom: '8px', display: 'flex', justifyContent: 'center' }}>{renderSportIcon(req.sportName, 48)}</div>
+            <div style={{ marginBottom: '8px', display: 'flex', justifyContent: 'center' }}><SportIcon name={req.sportName} size={48} /></div>
             <h2 style={{ fontSize: '24px', fontWeight: '800', color: c.text, margin: '0 0 4px' }}>{req.sportName}</h2>
             <p style={{ fontSize: '13px', color: c.textMuted, margin: 0 }}>{st.description}</p>
           </div>
@@ -1222,20 +1349,41 @@ const Dashboard = ({ onLogout }) => {
                     <p style={{ fontSize: '15px', fontWeight: '600', color: c.text, margin: 0 }}>{req.partner.firstName} {req.partner.lastName}</p>
                     <p style={{ fontSize: '12px', color: c.textMuted, margin: '4px 0 0', wordBreak: 'break-all' }}>{req.partner.email}</p>
                     {req.status === 'matched' && !req.needsMyAction && (
-                      <p style={{ fontSize: '12px', color: '#3b82f6', margin: '8px 0 0' }}>Tu as accepté — en attente de l&apos;autre joueur.</p>
+                      <>
+                        <p style={{ fontSize: '12px', color: '#3b82f6', margin: '8px 0 0' }}>Tu as accepté — en attente de l&apos;autre joueur.</p>
+                        {req.matchId && req.matchStatus === 'pending_acceptance' && (
+                          <button
+                            type="button"
+                            disabled={!!matchCancelConfirm || matchCancelLoading}
+                            onClick={() => openMatchCancelModal(req.matchId, req.sportName, req.time)}
+                            style={{
+                              marginTop: '10px', width: '100%', padding: '10px', borderRadius: '10px',
+                              border: `1.5px solid ${c.cardBorder}`, background: 'transparent', color: c.text,
+                              fontWeight: '700', fontSize: '13px', cursor: matchCancelLoading ? 'wait' : 'pointer',
+                            }}
+                          >
+                            Annuler le match
+                          </button>
+                        )}
+                      </>
                     )}
                   </div>
                 </div>
 
-                {req.status === 'matched' && req.needsMyAction && (
+                {req.status === 'matched' && req.needsMyAction && req.matchId && (
                   <div style={{ display: 'flex', gap: '10px', marginTop: '14px' }}>
-                    <button type="button" disabled={respondLoading} onClick={() => respondToMatch(req.id, 'accept')} style={{ flex: 1, padding: '12px', borderRadius: '12px', border: 'none', background: respondLoading ? '#86efac' : '#22c55e', color: 'white', fontWeight: '700', fontSize: '14px', cursor: respondLoading ? 'wait' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
+                    <button type="button" disabled={respondLoading || matchCancelLoading || !!matchCancelConfirm} onClick={() => respondToMatch(req.id, 'accept')} style={{ flex: 1, padding: '12px', borderRadius: '12px', border: 'none', background: (respondLoading || matchCancelLoading || matchCancelConfirm) ? '#86efac' : '#22c55e', color: 'white', fontWeight: '700', fontSize: '14px', cursor: (respondLoading || matchCancelLoading || matchCancelConfirm) ? 'wait' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
                       <svg width="16" height="16" fill="none" stroke="white" strokeWidth="2.5" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12" /></svg>
                       Accepter
                     </button>
-                    <button type="button" disabled={respondLoading} onClick={() => respondToMatch(req.id, 'decline')} style={{ flex: 1, padding: '12px', borderRadius: '12px', border: `1.5px solid ${c.cardBorder}`, background: 'transparent', color: c.text, fontWeight: '700', fontSize: '14px', cursor: respondLoading ? 'wait' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
+                    <button
+                      type="button"
+                      disabled={respondLoading || !!matchCancelConfirm || matchCancelLoading}
+                      onClick={() => openMatchCancelModal(req.matchId, req.sportName, req.time)}
+                      style={{ flex: 1, padding: '12px', borderRadius: '12px', border: `1.5px solid ${c.cardBorder}`, background: 'transparent', color: c.text, fontWeight: '700', fontSize: '14px', cursor: (respondLoading || matchCancelLoading) ? 'wait' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}
+                    >
                       <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
-                      Refuser
+                      Annuler le match
                     </button>
                   </div>
                 )}
@@ -1248,17 +1396,38 @@ const Dashboard = ({ onLogout }) => {
               <span style={{ fontSize: '12px', color: c.textMuted }}>ID: {req.id.substring(0, 8)}...</span>
             </div>
 
-            {/* Bouton supprimer */}
-            <button onClick={() => setRequestToDelete(req.id)} style={{
-              width: '100%', padding: '12px', borderRadius: '12px', marginTop: '10px',
-              border: `1.5px solid #E30613`, background: 'transparent',
-              color: '#E30613', fontWeight: '700', fontSize: '14px', cursor: 'pointer',
-              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
-              transition: 'all 0.2s',
-            }}>
-              <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /></svg>
-              Supprimer cette demande
-            </button>
+            {/* Annuler le match confirmé (hors bandeau Accepter / Annuler ci-dessus) */}
+            {req.matchId && req.matchStatus === 'scheduled' && (
+              <button
+                type="button"
+                disabled={!!matchCancelConfirm || matchCancelLoading}
+                onClick={() => openMatchCancelModal(req.matchId, req.sportName, req.time)}
+                style={{
+                  width: '100%', padding: '12px', borderRadius: '12px', marginTop: '10px',
+                  border: 'none', background: '#E30613',
+                  color: 'white', fontWeight: '700', fontSize: '14px', cursor: matchCancelLoading ? 'wait' : 'pointer',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
+                  opacity: matchCancelLoading ? 0.75 : 1,
+                }}
+              >
+                <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" /><line x1="15" y1="9" x2="9" y2="15" /><line x1="9" y1="9" x2="15" y2="15" /></svg>
+                Annuler le match
+              </button>
+            )}
+
+            {/* Supprimer la recherche seule (sans match lié) */}
+            {!req.matchId && req.status === 'pending' && (
+              <button onClick={() => setRequestToDelete(req.id)} style={{
+                width: '100%', padding: '12px', borderRadius: '12px', marginTop: '10px',
+                border: `1.5px solid #E30613`, background: 'transparent',
+                color: '#E30613', fontWeight: '700', fontSize: '14px', cursor: 'pointer',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
+                transition: 'all 0.2s',
+              }}>
+                <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /></svg>
+                Supprimer cette demande
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -1334,9 +1503,18 @@ const Dashboard = ({ onLogout }) => {
                     <div style={{ width: '42px', height: '42px', borderRadius: '50%', background: 'linear-gradient(135deg, #002157, #E30613)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: '700', fontSize: '16px', flexShrink: 0 }}>{u.firstName.charAt(0)}</div>
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <p style={{ fontSize: '14px', fontWeight: '700', color: c.text, margin: '0 0 2px' }}>{u.firstName} {u.lastName}</p>
-                      <p style={{ fontSize: '12px', color: c.textMuted, margin: 0 }}>{u.department}ème année · Groupe {u.classGroup}</p>
+                      <p style={{ fontSize: '12px', color: c.textMuted, margin: 0 }}>
+                        {u.userRole === 'professor'
+                          ? `Enseignant · ${u.professorTrigram || '—'}`
+                          : `${u.department}ème année · Groupe ${u.classGroup}`}
+                      </p>
                     </div>
-                    {u.mainSport && <span style={{ fontSize: '11px', fontWeight: '600', padding: '3px 10px', borderRadius: '8px', background: darkMode ? '#1a2744' : '#eff6ff', color: '#2563eb', flexShrink: 0 }}>{u.mainSport}</span>}
+                    {u.mainSport && (
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '11px', fontWeight: '600', padding: '3px 10px', borderRadius: '8px', background: darkMode ? '#1a2744' : '#eff6ff', color: '#2563eb', flexShrink: 0 }}>
+                        <SportIcon name={u.mainSport} size={14} />
+                        <span>{u.mainSport}</span>
+                      </span>
+                    )}
                   </div>
                 ))}
               </div>
@@ -1430,9 +1608,13 @@ const Dashboard = ({ onLogout }) => {
                         <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                           {athlete.mainSport && (
                             <span style={{
+                              display: 'inline-flex', alignItems: 'center', gap: '4px',
                               fontSize: '10px', fontWeight: '700', padding: '2px 8px', borderRadius: '6px',
                               background: sportTag.bg, color: sportTag.color,
-                            }}>{athlete.mainSport}</span>
+                            }}>
+                              <SportIcon name={athlete.mainSport} size={12} />
+                              {athlete.mainSport}
+                            </span>
                           )}
                           <span style={{ fontSize: '11px', color: c.textMuted }}>{athlete.totalMatches} matchs</span>
                         </div>
@@ -1513,8 +1695,17 @@ const Dashboard = ({ onLogout }) => {
                       <div style={{ textAlign: 'center' }}>
                         <div style={{ width: '80px', height: '80px', borderRadius: '50%', margin: '0 auto 12px', background: 'rgba(255,255,255,0.15)', backdropFilter: 'blur(10px)', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '3px solid rgba(255,255,255,0.25)', fontSize: '32px', fontWeight: '700', color: 'white' }}>{up.user.first_name.charAt(0)}</div>
                         <h2 style={{ color: 'white', fontSize: '20px', fontWeight: '700', margin: '0 0 4px' }}>{up.user.first_name} {up.user.last_name}</h2>
-                        <p style={{ color: 'rgba(255,255,255,0.75)', fontSize: '14px', margin: '0 0 2px' }}>{up.user.department}ème année de TC</p>
-                        <p style={{ color: 'rgba(255,255,255,0.55)', fontSize: '12px', margin: '0 0 18px' }}>Groupe {up.user.class_group}</p>
+                        {up.user.user_role === 'professor' ? (
+                          <>
+                            <p style={{ color: 'rgba(255,255,255,0.85)', fontSize: '14px', margin: '0 0 2px' }}>Enseignant</p>
+                            <p style={{ color: 'rgba(255,255,255,0.6)', fontSize: '12px', margin: '0 0 18px' }}>Trigramme {up.user.professor_trigram || '—'}</p>
+                          </>
+                        ) : (
+                          <>
+                            <p style={{ color: 'rgba(255,255,255,0.75)', fontSize: '14px', margin: '0 0 2px' }}>{up.user.department}ème année de TC</p>
+                            <p style={{ color: 'rgba(255,255,255,0.55)', fontSize: '12px', margin: '0 0 18px' }}>Groupe {up.user.class_group}</p>
+                          </>
+                        )}
                       </div>
                       <div style={{ display: 'flex', gap: '8px' }}>
                         {[{ v: up.stats.totalMatches, l: 'Matchs joués' }, { v: up.stats.totalSports, l: 'Sports' }, { v: up.stats.totalPartners, l: 'Partenaires' }].map((s, i) => (
@@ -1555,15 +1746,18 @@ const Dashboard = ({ onLogout }) => {
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                           {up.sports.map((sport, i) => {
                             const lvColor = getLvlColor(sport.level);
+                            const adv = sport.level === 'Avancé';
+                            const lvBg = adv ? '#002157' : lvColor === '#E30613' ? (darkMode ? '#2a0a0e' : '#fef2f2') : (darkMode ? '#1a2030' : '#f3f4f6');
+                            const lvFg = adv ? '#ffffff' : lvColor;
                             return (
                               <div key={i} style={{ background: c.bg, border: `1px solid ${c.cardBorder}`, borderRadius: '12px', padding: '12px 14px', display: 'flex', alignItems: 'center', gap: '10px' }}>
                                 <div style={{ width: '38px', height: '38px', borderRadius: '50%', background: darkMode ? '#1a2744' : '#fef2f2', border: `1px solid ${darkMode ? '#253a5c' : '#fecaca'}`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                                  <svg width="18" height="18" fill="none" stroke="#E30613" strokeWidth="1.5" viewBox="0 0 24 24"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5C7 4 7 7 7 7" /><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5C17 4 17 7 17 7" /><path d="M4 22h16" /><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z" /></svg>
+                                  <SportIcon name={sport.name} size={18} />
                                 </div>
                                 <div style={{ flex: 1, minWidth: 0 }}>
                                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
                                     <span style={{ fontSize: '13px', fontWeight: '700', color: c.text }}>{sport.name}</span>
-                                    <span style={{ fontSize: '10px', fontWeight: '700', padding: '2px 8px', borderRadius: '6px', background: lvColor === '#002157' ? (darkMode ? '#0c1f3f' : '#eff6ff') : lvColor === '#E30613' ? (darkMode ? '#2a0a0e' : '#fef2f2') : (darkMode ? '#1a2030' : '#f3f4f6'), color: lvColor }}>{sport.level}</span>
+                                    <span style={{ fontSize: '10px', fontWeight: '700', padding: '2px 8px', borderRadius: '6px', background: lvBg, color: lvFg }}>{sport.level}</span>
                                   </div>
                                   <div style={{ height: '5px', borderRadius: '3px', background: darkMode ? '#1a2744' : '#e5e7eb', overflow: 'hidden' }}>
                                     <div style={{ width: `${Math.min((sport.matchCount / maxM) * 100, 100)}%`, height: '100%', borderRadius: '3px', background: '#E30613' }} />
@@ -1731,6 +1925,79 @@ const Dashboard = ({ onLogout }) => {
     { id: 'profil', label: 'Profil', icon: (a) => <svg width="22" height="22" fill="none" stroke={a ? '#E30613' : c.textMuted} strokeWidth="2" viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" /></svg> },
   ];
 
+  // ━━━━━━━━━━━━ ANNULER MATCH — CONFIRMATION MODAL ━━━━━━━━━━━━
+  const renderMatchCancelConfirmModal = () => {
+    if (!matchCancelConfirm) return null;
+    const { sportName, creneau } = matchCancelConfirm;
+    return (
+      <div
+        onClick={closeMatchCancelModal}
+        style={{
+          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+          background: c.overlay, zIndex: 3500,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          padding: '20px', animation: 'fadeIn 0.2s ease',
+        }}
+      >
+        <div
+          onClick={(e) => e.stopPropagation()}
+          style={{
+            background: c.surface, borderRadius: '24px', width: '100%', maxWidth: '400px',
+            padding: '24px', border: `1px solid ${c.surfaceBorder}`,
+            boxShadow: '0 24px 80px rgba(0,0,0,0.25)',
+          }}
+        >
+          <div style={{ width: '56px', height: '56px', borderRadius: '50%', background: darkMode ? 'rgba(227,6,19,0.15)' : 'rgba(227,6,19,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
+            <svg width="28" height="28" fill="none" stroke="#E30613" strokeWidth="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" /><line x1="15" y1="9" x2="9" y2="15" /><line x1="9" y1="9" x2="15" y2="15" /></svg>
+          </div>
+          <h3 style={{ fontSize: '18px', fontWeight: '700', color: c.text, margin: '0 0 8px', textAlign: 'center' }}>Annuler ce match ?</h3>
+          <p style={{ fontSize: '14px', color: c.textMuted, margin: '0 0 8px', lineHeight: '1.55', textAlign: 'center' }}>
+            Le créneau sera libéré pour toi et ton partenaire. Vous pourrez relancer une recherche ensuite.
+          </p>
+          <div style={{
+            background: darkMode ? '#0a1628' : '#f9fafb', borderRadius: '12px', padding: '12px 14px', marginBottom: '16px',
+            border: `1px solid ${c.cardBorder}`,
+          }}>
+            <p style={{ fontSize: '13px', fontWeight: '700', color: c.text, margin: '0 0 4px' }}>{sportName}</p>
+            <p style={{ fontSize: '12px', color: c.textMuted, margin: 0 }}>{creneau}</p>
+          </div>
+          {matchCancelModalError ? (
+            <p style={{
+              fontSize: '13px', color: darkMode ? '#fecaca' : '#991b1b', background: darkMode ? '#450a0a' : '#fef2f2',
+              border: `1px solid ${darkMode ? '#7f1d1d' : '#fecaca'}`, borderRadius: '10px', padding: '10px 12px', marginBottom: '16px', lineHeight: '1.45',
+            }}>{matchCancelModalError}</p>
+          ) : null}
+          <div style={{ display: 'flex', gap: '12px' }}>
+            <button
+              type="button"
+              onClick={closeMatchCancelModal}
+              disabled={matchCancelLoading}
+              style={{
+                flex: 1, padding: '12px', background: 'transparent', border: `1.5px solid ${c.surfaceBorder}`,
+                borderRadius: '12px', color: c.text, fontWeight: '600', cursor: matchCancelLoading ? 'not-allowed' : 'pointer',
+                fontFamily: "'Inter', sans-serif", opacity: matchCancelLoading ? 0.6 : 1,
+              }}
+            >
+              Retour
+            </button>
+            <button
+              type="button"
+              onClick={confirmMatchCancellation}
+              disabled={matchCancelLoading}
+              style={{
+                flex: 1, padding: '12px', background: '#E30613', border: 'none', borderRadius: '12px',
+                color: 'white', fontWeight: '600', cursor: matchCancelLoading ? 'wait' : 'pointer',
+                fontFamily: "'Inter', sans-serif", opacity: matchCancelLoading ? 0.85 : 1,
+              }}
+            >
+              {matchCancelLoading ? 'Annulation…' : 'Oui, annuler'}
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   // ━━━━━━━━━━━━ DELETE CONFIRM MODAL ━━━━━━━━━━━━
   const renderDeleteConfirmModal = () => {
     if (!requestToDelete) return null;
@@ -1841,6 +2108,7 @@ const Dashboard = ({ onLogout }) => {
       {renderMatchsDrawer()}
       {renderEditProfileModal()}
       {renderDeleteConfirmModal()}
+      {renderMatchCancelConfirmModal()}
     </div>
   );
 };

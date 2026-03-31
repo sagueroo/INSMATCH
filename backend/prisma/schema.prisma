@@ -17,6 +17,10 @@ model User {
   last_name     String
   email         String         @unique
   password_hash String
+  /// "student" | "professor"
+  user_role     String         @default("student")
+  /// Trigramme INSA (ex. CGO) — renseigné si user_role = professor
+  professor_trigram String?
   department    String
   class_group   String
   phone         String?

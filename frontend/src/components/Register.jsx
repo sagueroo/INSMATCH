@@ -104,8 +104,10 @@ const Register = ({ onGoToLogin }) => {
         last_name: formData.last_name,
         email: formData.email,
         password: formData.password,
-        department: isProfessor ? 'Enseignant' : formData.department,
-        class_group: isProfessor ? formData.trigram : formData.class_group,
+        user_role: isProfessor ? 'professor' : 'student',
+        ...(isProfessor
+          ? { professor_trigram: formData.trigram.trim() }
+          : { department: formData.department, class_group: formData.class_group }),
       };
       const response = await axios.post('/auth/register', payload);
       localStorage.setItem('first_name', response.data.first_name);
@@ -267,7 +269,7 @@ const Register = ({ onGoToLogin }) => {
               ) : (
                 /* Student fields */
                 <>
-                  <InputField label="Département" placeholder="Choisir le département (3 ou 4)" value={formData.department} onChange={(e) => setFormData({ ...formData, department: e.target.value, class_group: '' })} type="select" options={['3', '4']}
+                  <InputField label="Année" placeholder="Choisir l'année (3 ou 4)" value={formData.department} onChange={(e) => setFormData({ ...formData, department: e.target.value, class_group: '' })} type="select" options={['3', '4']}
                     icon={<svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M22 10v6M2 10l10-5 10 5-10 5z" /><path d="M6 12v5c0 2 3 3 6 3s6-1 6-3v-5" /></svg>}
                   />
                   {formData.department && (
