@@ -20,7 +20,7 @@ const Login = ({ onLoginSuccess, onGoToRegister }) => {
     setError('');
     setLoading(true);
     try {
-      const response = await axios.post('http://127.0.0.1:8000/auth/login', { email, password });
+      const response = await axios.post('/auth/login', { email, password });
       localStorage.setItem('token', response.data.access_token);
       localStorage.setItem('first_name', response.data.user.first_name);
       localStorage.setItem('last_name', response.data.user.last_name);

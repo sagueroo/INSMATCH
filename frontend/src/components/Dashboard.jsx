@@ -47,7 +47,7 @@ const Dashboard = ({ onLogout }) => {
   const fetchProfile = async () => {
     try {
       const token = localStorage.getItem('token');
-      const res = await axios.get('http://127.0.0.1:8000/profile', {
+      const res = await axios.get('/profile', {
         headers: { Authorization: `Bearer ${token}` }
       });
       setProfileData(res.data);
@@ -64,7 +64,7 @@ const Dashboard = ({ onLogout }) => {
     if (!requestToDelete) return;
     try {
       const token = localStorage.getItem('token');
-      await axios.delete(`http://127.0.0.1:8000/requests/${requestToDelete}`, {
+      await axios.delete(`/requests/${requestToDelete}`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       setSelectedRequest(null);
@@ -80,7 +80,7 @@ const Dashboard = ({ onLogout }) => {
   const fetchCommunity = async () => {
     try {
       const token = localStorage.getItem('token');
-      const res = await axios.get('http://127.0.0.1:8000/community', {
+      const res = await axios.get('/community', {
         headers: { Authorization: `Bearer ${token}` }
       });
       setCommunityData(res.data);
@@ -109,7 +109,7 @@ const Dashboard = ({ onLogout }) => {
   const fetchVenues = async () => {
     try {
       const token = localStorage.getItem('token');
-      const res = await axios.get('http://127.0.0.1:8000/venues', {
+      const res = await axios.get('/venues', {
         headers: { Authorization: `Bearer ${token}` }
       });
       setVenuesData(res.data);
@@ -124,7 +124,7 @@ const Dashboard = ({ onLogout }) => {
   const fetchSchedule = async () => {
     try {
       const token = localStorage.getItem('token');
-      const res = await axios.get('http://127.0.0.1:8000/schedule', {
+      const res = await axios.get('/schedule', {
         headers: { Authorization: `Bearer ${token}` }
       });
       setScheduleData(res.data);
@@ -142,7 +142,7 @@ const Dashboard = ({ onLogout }) => {
     setEditError('');
     try {
       const token = localStorage.getItem('token');
-      await axios.put('http://127.0.0.1:8000/profile', {
+      await axios.put('/profile', {
         first_name: editForm.first_name,
         last_name: editForm.last_name,
         email: editForm.email,
@@ -184,7 +184,7 @@ const Dashboard = ({ onLogout }) => {
     setSearchLoading(true);
     try {
       const token = localStorage.getItem('token');
-      const res = await axios.get(`http://127.0.0.1:8000/community/search?q=${encodeURIComponent(query)}`, {
+      const res = await axios.get(`/community/search?q=${encodeURIComponent(query)}`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       setSearchResults(res.data);
@@ -202,7 +202,7 @@ const Dashboard = ({ onLogout }) => {
     setCommunityUserLoading(true);
     try {
       const token = localStorage.getItem('token');
-      const res = await axios.get(`http://127.0.0.1:8000/community/users/${userId}/profile`, {
+      const res = await axios.get(`/community/users/${userId}/profile`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       setCommunityUserProfile(res.data);
@@ -246,7 +246,7 @@ const Dashboard = ({ onLogout }) => {
   const fetchRequests = async () => {
     try {
       const token = localStorage.getItem('token');
-      const res = await axios.get('http://127.0.0.1:8000/requests', {
+      const res = await axios.get('/requests', {
         headers: { Authorization: `Bearer ${token}` }
       });
       const payload = res.data;
@@ -263,7 +263,7 @@ const Dashboard = ({ onLogout }) => {
     try {
       const token = localStorage.getItem('token');
       await axios.post(
-        `http://127.0.0.1:8000/requests/${requestId}/respond`,
+        `/requests/${requestId}/respond`,
         { action },
         { headers: { Authorization: `Bearer ${token}` } }
       );
@@ -291,7 +291,7 @@ const Dashboard = ({ onLogout }) => {
         role: msg.role === 'ai' ? 'assistant' : msg.role,
         content: msg.content
       }));
-      const response = await axios.post('http://127.0.0.1:8000/chat/',
+      const response = await axios.post('/chat/',
         { history: conversationHistory },
         { headers: { Authorization: `Bearer ${token}` } }
       );

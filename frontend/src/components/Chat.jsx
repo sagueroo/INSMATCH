@@ -44,7 +44,7 @@ const Chat = ({ onLogout }) => {
       }));
 
       // 🟢 2. On envoie TOUT l'historique sous le nom 'history'
-      const response = await axios.post('http://127.0.0.1:8000/chat/', 
+      const response = await axios.post('/chat/', 
         { history: conversationHistory }, 
         { 
           headers: { Authorization: `Bearer ${token}` } 

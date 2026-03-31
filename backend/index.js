@@ -14,6 +14,12 @@ const notificationsRouter = require('./routes/notifications');
 
 const app = express();
 
+// Chrome (Private Network Access) : requêtes depuis localhost vers 127.0.0.1 — en-tête utile si l’API est appelée en cross-origin direct.
+app.use((req, res, next) => {
+    res.setHeader('Access-Control-Allow-Private-Network', 'true');
+    next();
+});
+
 // --- CONFIGURATION CORS (Pour accepter le React sur le port 5173) ---
 app.use(cors({
     origin: ["http://localhost:5173", "http://localhost:5174", "http://localhost:5175", "http://127.0.0.1:5173", "http://127.0.0.1:5174", "http://127.0.0.1:5175"],

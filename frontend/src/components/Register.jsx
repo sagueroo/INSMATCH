@@ -107,7 +107,7 @@ const Register = ({ onGoToLogin }) => {
         department: isProfessor ? 'Enseignant' : formData.department,
         class_group: isProfessor ? formData.trigram : formData.class_group,
       };
-      const response = await axios.post('http://127.0.0.1:8000/auth/register', payload);
+      const response = await axios.post('/auth/register', payload);
       localStorage.setItem('first_name', response.data.first_name);
       localStorage.setItem('last_name', response.data.last_name);
       setSuccessMessage("Inscription réussie ! Bienvenue " + response.data.first_name);

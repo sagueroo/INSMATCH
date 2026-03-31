@@ -16,7 +16,7 @@ const MyRequests = ({ onLogout }) => {
   const fetchRequests = async () => {
     try {
       const token = localStorage.getItem('token');
-      const response = await axios.get('http://127.0.0.1:8000/requests', {
+      const response = await axios.get('/requests', {
         headers: { Authorization: `Bearer ${token}` }
       });
       const payload = response.data;
