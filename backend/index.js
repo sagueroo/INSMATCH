@@ -30,15 +30,15 @@ app.use(cors({
 app.use(express.json()); // Permet de lire req.body en JSON (équivalent Pydantic natif)
 
 // --- ROUTES ---
-app.use('/auth', authRouter);
-app.use('/chat', chatRouter);
-app.use('/requests', requestsRouter);
-app.use('/profile', profileRouter);
-app.use('/community', communityRouter);
-app.use('/venues', venuesRouter);
-app.use('/schedule', scheduleRouter);
-app.use('/group-events', groupEventsRouter);
-app.use('/notifications', notificationsRouter);
+app.use('/api/auth', authRouter);
+app.use('/api/chat', chatRouter);
+app.use('/api/requests', requestsRouter);
+app.use('/api/profile', profileRouter);
+app.use('/api/community', communityRouter);
+app.use('/api/venues', venuesRouter);
+app.use('/api/schedule', scheduleRouter);
+app.use('/api/group-events', groupEventsRouter);
+app.use('/api/notifications', notificationsRouter);
 
 // --- ROUTE DE TEST ---
 app.get('/', (req, res) => {

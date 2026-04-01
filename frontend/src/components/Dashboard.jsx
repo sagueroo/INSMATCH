@@ -174,7 +174,7 @@ const Dashboard = ({ onLogout }) => {
 
   // ─── OPEN EDIT FORM ───
   const openEditForm = () => {
-    if (!profileData) return;
+    if (!profileData?.user) return;
     const { user, sports, availableSports } = profileData;
     setEditForm({
       first_name: user.first_name,
@@ -243,7 +243,12 @@ const Dashboard = ({ onLogout }) => {
     link.rel = 'stylesheet';
     document.head.appendChild(link);
     setMessages([
-      { role: 'ai', content: `Bonjour ! Je suis votre agent IA INSAMATCH. Comment puis-je vous aider à trouver des partenaires sportifs aujourd'hui ?`, time: formatTime() }
+      {
+        role: 'ai',
+        content:
+          "Bonjour ! Je suis ton agent IA INSAMATCH — dis-moi quel sport tu cherches. Pour voir tes demandes, les propositions de match et les statuts : sur téléphone utilise le bouton « Mes matchs » en haut à gauche ; sur ordinateur, c’est la colonne à gauche du chat.",
+        time: formatTime(),
+      },
     ]);
     fetchRequests();
     fetchProfile();
@@ -425,7 +430,7 @@ const Dashboard = ({ onLogout }) => {
     <div style={{ padding: '20px', height: '100%', overflowY: 'auto' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '20px' }}>
         <svg width="20" height="20" fill="none" stroke={c.text} strokeWidth="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" /></svg>
-        <h2 style={{ fontSize: '18px', fontWeight: '700', color: c.text, margin: 0 }}>Mes Recherches</h2>
+        <h2 style={{ fontSize: '18px', fontWeight: '700', color: c.text, margin: 0 }}>Mes matchs</h2>
       </div>
       {requestsLoading ? (
         <p style={{ color: c.textMuted, fontSize: '13px' }}>Chargement...</p>
@@ -486,8 +491,23 @@ const Dashboard = ({ onLogout }) => {
       );
     }
 
-    const { user, stats, sports, rewards, recentMatches } = profileData;
-    const email = user.email;
+    const user = profileData.user;
+    const stats = profileData.stats ?? { totalMatches: 0, totalSports: 0, totalPartners: 0 };
+    const sports = Array.isArray(profileData.sports) ? profileData.sports : [];
+    const rewards = Array.isArray(profileData.rewards) ? profileData.rewards : [];
+    const recentMatches = Array.isArray(profileData.recentMatches) ? profileData.recentMatches : [];
+
+    if (!user || typeof user !== 'object') {
+      return (
+        <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: c.bg, padding: '20px', textAlign: 'center' }}>
+          <p style={{ color: c.textMuted, fontSize: '14px', maxWidth: '280px', lineHeight: 1.5 }}>
+            Données profil incomplètes (réponse serveur inattendue). Rafraîchis la page ou reconnecte-toi.
+          </p>
+        </div>
+      );
+    }
+
+    const email = user.email ?? '—';
 
     const getLevelColor = (level) => {
       if (level === 'Avancé') return '#002157';
@@ -573,7 +593,7 @@ const Dashboard = ({ onLogout }) => {
           {[
             { icon: <svg width="16" height="16" fill="none" stroke={c.textMuted} strokeWidth="2" viewBox="0 0 24 24"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" /><polyline points="22,6 12,13 2,6" /></svg>, label: 'Email', value: email },
             { icon: <svg width="16" height="16" fill="none" stroke={c.textMuted} strokeWidth="2" viewBox="0 0 24 24"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6A19.79 19.79 0 0 1 2.12 4.18 2 2 0 0 1 4 2h3a2 2 0 0 1 2 1.72c.13.81.36 1.6.68 2.34a2 2 0 0 1-.45 2.11L8.09 9.31a16 16 0 0 0 6 6l1.14-1.14a2 2 0 0 1 2.11-.45c.74.32 1.53.55 2.34.68A2 2 0 0 1 22 16.92z" /></svg>, label: 'Téléphone', value: user.phone || 'Non renseigné' },
-            { icon: <svg width="16" height="16" fill="none" stroke={c.textMuted} strokeWidth="2" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2" ry="2" /><line x1="16" y1="2" x2="16" y2="6" /><line x1="8" y1="2" x2="8" y2="6" /><line x1="3" y1="10" x2="21" y2="10" /></svg>, label: 'Inscription', value: formatDate(user.created_at) },
+            { icon: <svg width="16" height="16" fill="none" stroke={c.textMuted} strokeWidth="2" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2" ry="2" /><line x1="16" y1="2" x2="16" y2="6" /><line x1="8" y1="2" x2="8" y2="6" /><line x1="3" y1="10" x2="21" y2="10" /></svg>, label: 'Inscription', value: user.created_at ? formatDate(user.created_at) : '—' },
             { icon: <svg width="16" height="16" fill="none" stroke={c.textMuted} strokeWidth="2" viewBox="0 0 24 24"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" /><circle cx="12" cy="10" r="3" /></svg>, label: 'Localisation', value: 'Campus INSA Lyon' },
           ].map((info, i) => (
             <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: '12px', marginBottom: i < 3 ? '16px' : 0 }}>
@@ -735,25 +755,41 @@ const Dashboard = ({ onLogout }) => {
     const matchActionCount = requests.filter((r) => r.needsMyAction).length;
     return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', borderBottom: `1px solid ${c.surfaceBorder}`, background: c.subHeaderBg, flexShrink: 0 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <button className="hamburger-btn" onClick={() => setIsMatchDrawerOpen(true)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '4px', display: 'flex', lineHeight: 0, position: 'relative' }}>
-            <svg width="22" height="22" fill="none" stroke={c.text} strokeWidth="2" viewBox="0 0 24 24"><line x1="3" y1="6" x2="21" y2="6" /><line x1="3" y1="12" x2="21" y2="12" /><line x1="3" y1="18" x2="21" y2="18" /></svg>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 12px', borderBottom: `1px solid ${c.surfaceBorder}`, background: c.subHeaderBg, flexShrink: 0, gap: '8px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0, flex: 1 }}>
+          <button
+            type="button"
+            className="hamburger-btn"
+            aria-label="Ouvrir Mes matchs — tes recherches et statuts"
+            onClick={() => setIsMatchDrawerOpen(true)}
+            style={{
+              flexShrink: 0,
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              cursor: 'pointer',
+              padding: '8px 12px',
+              borderRadius: '12px',
+              border: `1px solid ${c.cardBorder}`,
+              background: darkMode ? '#1a2744' : '#f3f4f6',
+              position: 'relative',
+              fontFamily: "'Inter', sans-serif",
+            }}
+          >
+            <svg width="18" height="18" fill="none" stroke={c.text} strokeWidth="2" viewBox="0 0 24 24" aria-hidden><line x1="3" y1="6" x2="21" y2="6" /><line x1="3" y1="12" x2="21" y2="12" /><line x1="3" y1="18" x2="21" y2="18" /></svg>
+            <span style={{ fontWeight: '700', fontSize: '13px', color: c.text, letterSpacing: '-0.02em' }}>Mes matchs</span>
             {matchActionCount > 0 && (
               <span style={{
-                position: 'absolute', top: '-6px', right: '-8px', minWidth: '18px', height: '18px', borderRadius: '999px',
+                position: 'absolute', top: '-4px', right: '-4px', minWidth: '18px', height: '18px', borderRadius: '999px',
                 background: '#E30613', color: 'white', fontSize: '10px', fontWeight: '800', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 5px', boxShadow: '0 1px 4px rgba(0,0,0,0.3)',
               }}>{matchActionCount > 9 ? '9+' : matchActionCount}</span>
             )}
           </button>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <svg width="18" height="18" fill="none" stroke={c.text} strokeWidth="2" viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" /></svg>
-            <span style={{ fontWeight: '600', fontSize: '16px', color: c.text }}>Agent IA</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0 }}>
+            <svg width="18" height="18" fill="none" stroke={c.text} strokeWidth="2" viewBox="0 0 24 24" style={{ flexShrink: 0 }} aria-hidden><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" /></svg>
+            <span style={{ fontWeight: '600', fontSize: '15px', color: c.text, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>Agent IA</span>
           </div>
         </div>
-        <button style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '4px', lineHeight: 0 }}>
-          <svg width="22" height="22" fill="none" stroke={c.text} strokeWidth="2" viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" /></svg>
-        </button>
       </div>
 
       <div style={{ flex: 1, overflowY: 'auto', padding: '16px', display: 'flex', flexDirection: 'column', gap: '12px', background: c.bg }}>
@@ -796,7 +832,7 @@ const Dashboard = ({ onLogout }) => {
           <div style={{ padding: '16px 20px', borderBottom: `1px solid ${c.surfaceBorder}`, background: c.subHeaderBg, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
               <svg width="22" height="22" fill="none" stroke="#E30613" strokeWidth="2" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" /></svg>
-              <h2 style={{ margin: 0, fontSize: '18px', fontWeight: '700', color: c.text }}>Mes Matchs</h2>
+              <h2 style={{ margin: 0, fontSize: '18px', fontWeight: '700', color: c.text }}>Mes matchs</h2>
               <span style={{ fontSize: '12px', color: c.textMuted, background: darkMode ? '#1a2744' : '#f3f4f6', padding: '3px 10px', borderRadius: '20px', fontWeight: '600' }}>{requests.length}</span>
             </div>
             <button onClick={() => setIsMatchDrawerOpen(false)} style={{ background: 'none', border: 'none', color: c.textMuted, cursor: 'pointer', padding: '4px' }}>

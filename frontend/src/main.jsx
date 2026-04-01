@@ -4,8 +4,8 @@ import axios from 'axios'
 import './index.css'
 import App from './App.jsx'
 
-// Dev : chemins relatifs (/profile…) → même origine que Vite (5173), proxy vers l’API. Prod : même origine que Nginx.
-axios.defaults.baseURL = ''
+// Préfixe API (backend monte auth, profile, chat… sous /api/...). En dev, Vite proxy `/api` → serveur Node.
+axios.defaults.baseURL = import.meta.env.VITE_API_BASE || '/api'
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>

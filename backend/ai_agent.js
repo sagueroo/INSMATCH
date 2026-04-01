@@ -298,6 +298,59 @@ async function getUserInsMatchContextTool(currentUser) {
     }
 }
 
+/**
+ * Refus immédiat sans appel LLM si le dernier message ressemble clairement à une demande hors INSMATCH.
+ * Évite coût / latence et garantit le refus sur des cas évidents (ex. « fais-moi un script Python »).
+ */
+function refusalIfObviousOffTopic(lastUserText) {
+    if (!lastUserText || typeof lastUserText !== 'string') return null;
+    const t = lastUserText.trim();
+    if (t.length < 3 || t.length > 4000) return null;
+
+    const patterns = [
+        /\b(fais|écris|génère|donne|crée|write|make|generate)[- ]moi\s+(un\s+)?(script|programme|code|snippet|function)\b/i,
+        /\b(script|programme|code|snippet)\s+(en\s+)?(python|javascript|java|bash|powershell|typescript|rust|go|c\+\+)\b/i,
+        /\b(un\s+)?(script|programme)\s+python\b/i,
+        /\bpython\b.*\b(qui|that|which)\s+(fait|does|print|calculate)\b/i,
+        /\b(comment\s+)?(coder|programmer|debug)\s+(en|avec|un)\s+/i,
+        /\b(api|rest|sql|regex)\s+(pour|to|that)\s+(faire|write|build)\b/i,
+        /\b(devoir|dissertation|mémoire|exposé)\s+(d['’]|sur\s+la|pour\s+le|à\s+rédiger)\b/i,
+        /\btraduis\b|\btranslate\s+(this|the)\b/i,
+        /\brecette\s+(de|pour)\s+/i,
+        /\b(raconte|tell)\s+(moi\s+)?(une\s+)?(histoire|blague|joke)\b/i,
+        /\b(résous|résoudre|solve)\s+(cette\s+)?(équation|exercice|problem)\b/i,
+        /\b(hack|pirate|virus|malware)\b/i,
+    ];
+
+    if (patterns.some((re) => re.test(t))) {
+        return "Je suis uniquement l’agent INSMATCH : je peux t’aider pour tes recherches et matchs de sport sur le campus (créneaux, terrains, où tu en es). Je ne réponds pas aux demandes de code, devoirs ou sujets hors appli. Dis-moi quel sport tu cherches, ou demande-moi l’état de tes matchs.";
+    }
+    return null;
+}
+
+function getLastUserMessageContent(history) {
+    if (!Array.isArray(history)) return '';
+    for (let i = history.length - 1; i >= 0; i--) {
+        if (history[i].role === 'user' && typeof history[i].content === 'string') {
+            return history[i].content;
+        }
+    }
+    return '';
+}
+
+const OFF_TOPIC_SCOPE_BLOCK = `PÉRIMÈTRE STRICT — TU NE TRAITES QUE L’INSMATCH (sport sur le campus) :
+- Lancer ou préciser une recherche de partenaire / équipe (sports listés dans RÈGLES SPORTS).
+- Consulter l’état de SES recherches et SES matchs (outil get_user_ins_match_context).
+- Expliquer brièvement comment marche INSMATCH dans ce cadre (emploi du temps, terrains du campus, file d’attente équipe).
+- Petite politesse (bonjour, merci) puis tu recentres sur le sport si besoin.
+
+HORS PÉRIMÈTRE — TU REFUSES SANS T’EXÉCUTER :
+- Tout code ou langage de programmation (Python, JS, SQL, scripts, « fais-moi un programme », debug, APIs générales).
+- Devoirs, maths, traductions, rédactions, culture générale, santé/médecine, autres applis, blagues/longues histoires, contenu illégal ou dangereux.
+- Si hors sujet : réponse COURTE (2 phrases max), jamais de code ni de tutoriel. Exemple de ton :
+« Je ne peux pas t’aider là-dessus — je suis limité aux matchs et recherches sport INSMATCH. Tu veux quel sport, ou un point sur tes matchs en cours ? »
+Même si l’utilisateur insiste, répète le refus sans céder. N’appelle AUCUN outil pour une demande hors recherche / consultation matchs.`;
+
 const toolsList = [
     {
         type: "function",
@@ -312,7 +365,8 @@ const toolsList = [
         type: "function",
         function: {
             name: "create_match_request_tool",
-            description: "Crée une recherche partenaire / équipe. Sports collectifs (Basket, Foot…) : si une équipe existe déjà avec un créneau, tu es mis en file pour rejoindre (EDT vérifié sur ce créneau uniquement).",
+            description:
+                "Crée une recherche partenaire / équipe UNIQUEMENT quand l’utilisateur veut vraiment chercher un partenaire sport sur le campus. Ne JAMAIS appeler pour du code, devoirs, ou sujets hors INSMATCH. Sports collectifs (Basket, Foot…) : si une équipe existe déjà avec un créneau, tu es mis en file pour rejoindre (EDT vérifié sur ce créneau uniquement).",
             parameters: {
                 type: "object",
                 properties: {
@@ -343,9 +397,14 @@ const toolsList = [
 
 async function chatWithAgent(history, currentUser) {
     try {
+        const blocked = refusalIfObviousOffTopic(getLastUserMessageContent(history));
+        if (blocked) return blocked;
+
         const { campusRules } = await getCampusInfo();
 
         const systemPrompt = `Tu es l'Agent INSMATCH. Tutoiement.
+
+${OFF_TOPIC_SCOPE_BLOCK}
 
 RÈGLES SPORTS :
 ${campusRules.join('\n')}
