@@ -3,7 +3,8 @@
 
 generator client {
   provider      = "prisma-client-js"
-  binaryTargets = ["native", "windows"]
+  /// native = OS où tu lances `prisma generate` ; debian* = VPS Linux typiques (Neon se connecte pareil, c’est pour le binaire Prisma sur le serveur).
+  binaryTargets = ["native", "windows", "debian-openssl-3.0.x"]
 }
 
 datasource db {

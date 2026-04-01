@@ -31,9 +31,13 @@ const defaultCorsOrigins = [
 ];
 const extraCorsOrigins = (process.env.ALLOWED_ORIGINS || '')
     .split(',')
-    .map((s) => s.trim())
+    .map((s) => s.trim().replace(/\/$/, ''))
     .filter(Boolean);
 const corsAllowed = [...new Set([...defaultCorsOrigins, ...extraCorsOrigins])];
+
+if (extraCorsOrigins.length > 0) {
+    console.log(`[CORS] ${corsAllowed.length} origine(s) — prod: ${extraCorsOrigins.join(', ')}`);
+}
 
 app.use(
     cors({
