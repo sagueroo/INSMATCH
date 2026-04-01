@@ -1,6 +1,25 @@
+const { spawnSync } = require('child_process');
+require('dotenv').config(); // Charge le .env
+
+// Toujours régénérer le client Prisma AVANT tout require qui importe @prisma/client.
+// Sur le serveur, un vieux client (sans user_role, professor_trigram…) casse inscription, EDT prof, recherche communauté, etc.
+{
+    const r = spawnSync('npx', ['prisma', 'generate'], {
+        cwd: __dirname,
+        stdio: 'inherit',
+        shell: process.platform === 'win32',
+    });
+    if (r.status !== 0) {
+        console.error(
+            '[prisma] generate au démarrage a échoué (code',
+            r.status,
+            ') — lance manuellement: cd backend && npx prisma generate'
+        );
+    }
+}
+
 const express = require('express');
 const cors = require('cors');
-require('dotenv').config(); // Charge le .env
 
 const { router: authRouter } = require('./routes/auth');
 const chatRouter = require('./routes/chat');
@@ -33,7 +52,9 @@ const extraCorsOrigins = (process.env.ALLOWED_ORIGINS || '')
     .split(',')
     .map((s) => s.trim().replace(/\/$/, ''))
     .filter(Boolean);
-const corsAllowed = [...new Set([...defaultCorsOrigins, ...extraCorsOrigins])];
+// Déploiement connu (évite oubli du .env sur la VM) — tu peux retirer si tu changes de domaine.
+const defaultProdOrigins = ['https://insmatch.swiloz.com', 'https://www.insmatch.swiloz.com'];
+const corsAllowed = [...new Set([...defaultCorsOrigins, ...extraCorsOrigins, ...defaultProdOrigins])];
 
 if (extraCorsOrigins.length > 0) {
     console.log(`[CORS] ${corsAllowed.length} origine(s) — prod: ${extraCorsOrigins.join(', ')}`);

@@ -113,6 +113,8 @@ router.get('/', getCurrentUser, async (req, res) => {
       enriched = dedupeProfessorEvents(enriched);
     }
 
+    // Matchs INSAMATCH : dès qu’un créneau est proposé (pending_acceptance) ou confirmé (scheduled),
+    // l’événement apparaît ici pour les deux joueurs — fusionné avec les cours puis trié par heure.
     const userId = user.id;
     const insMatches = await prisma.match.findMany({
       where: {
