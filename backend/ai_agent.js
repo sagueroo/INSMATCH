@@ -328,6 +328,44 @@ function refusalIfObviousOffTopic(lastUserText) {
     return null;
 }
 
+/** Réponse troll si l’utilisateur impose un partenaire par genre (INSMATCH ne filtre pas là-dessus). */
+const DALEUX_REPLY =
+    "Ouh là — on est sur INSMATCH pour le **sport** et les créneaux, pas pour trier les gens comme sur une appli de drague. Demander un match **que** avec des meufs / des femmes / « uniquement des filles », c’est archi **daleux**. Je te crée aucune recherche avec ce genre de critère : relance en parlant sport, lieu ou dispo, **sans** préférence de genre.";
+
+/**
+ * Détecte une demande de match « uniquement femmes / meufs / nanas » (humour côté produit).
+ * On évite de déclencher sur « équipe féminine » / « section féminine » sans slang évident.
+ */
+function refusalIfGenderExclusivePartnerRequest(lastUserText) {
+    if (!lastUserText || typeof lastUserText !== 'string') return null;
+    const t = lastUserText.trim();
+    if (t.length < 4 || t.length > 4000) return null;
+
+    const looksLikeOfficialWomenSport =
+        /\b(section|équipe)\s+féminine\b/i.test(t) ||
+        /\b(hand|foot|basket|rugby|volley)\s+féminin(e)?\b/i.test(t);
+    const hasSlangOrExplicitGenderFilter =
+        /\bmeufs?\b/i.test(t) ||
+        /\bnanas?\b/i.test(t) ||
+        /\bque des (femmes|filles|nanas|meufs)\b/i.test(t) ||
+        /\b(uniquement|seulement)\s+(une\s+|des\s+)?(femme|meuf|fille|nana)\b/i.test(t) ||
+        /\b(uniquement|seulement)\s+des\s+(femmes|filles|nanas|meufs)\b/i.test(t) ||
+        /\bavec\s+(une\s+)?(meuf|nana)\b/i.test(t) ||
+        /\bje veux\b.*\b(meuf|nana)\b/i.test(t) ||
+        /\bcherche.*\b(meuf|nana)\b/i.test(t) ||
+        /\b(pas d['’]hommes?|zéro hommes?|zero hommes?|sans hommes?|que des filles)\b/i.test(t) ||
+        /\bpartenaire\s+(femme|meuf|fille)\b.*\b(uniquement|seulement|que)\b/i.test(t) ||
+        /\b(femme|filles?)\s+(uniquement|seulement|que)\b/i.test(t);
+
+    if (looksLikeOfficialWomenSport && !/\bmeufs?\b|\bnanas?\b/i.test(t)) {
+        return null;
+    }
+    if (hasSlangOrExplicitGenderFilter) {
+        return DALEUX_REPLY;
+    }
+    return null;
+}
+
 function getLastUserMessageContent(history) {
     if (!Array.isArray(history)) return '';
     for (let i = history.length - 1; i >= 0; i--) {
@@ -349,7 +387,10 @@ HORS PÉRIMÈTRE — TU REFUSES SANS T’EXÉCUTER :
 - Devoirs, maths, traductions, rédactions, culture générale, santé/médecine, autres applis, blagues/longues histoires, contenu illégal ou dangereux.
 - Si hors sujet : réponse COURTE (2 phrases max), jamais de code ni de tutoriel. Exemple de ton :
 « Je ne peux pas t’aider là-dessus — je suis limité aux matchs et recherches sport INSMATCH. Tu veux quel sport, ou un point sur tes matchs en cours ? »
-Même si l’utilisateur insiste, répète le refus sans céder. N’appelle AUCUN outil pour une demande hors recherche / consultation matchs.`;
+Même si l’utilisateur insiste, répète le refus sans céder. N’appelle AUCUN outil pour une demande hors recherche / consultation matchs.
+
+CRITÈRE GENRE (partenaire) :
+- Si l’utilisateur impose un partenaire selon le genre (ex. « que des meufs », « une femme uniquement », « avec une nana » au sens drague), tu REFUSES : INSAMATCH ne filtre pas comme ça. Réponse courte, tutoiement, ton moqueur mais pas insultant : c’est du niveau « daleux », pas de recherche créée. Ne pas appeler create_match_request_tool. Exception : parler d’une « équipe féminine » / sport féminin officiel sans critère de genre pour draguer = OK pour une vraie recherche sport.`;
 
 const toolsList = [
     {
@@ -397,8 +438,11 @@ const toolsList = [
 
 async function chatWithAgent(history, currentUser) {
     try {
-        const blocked = refusalIfObviousOffTopic(getLastUserMessageContent(history));
+        const lastUser = getLastUserMessageContent(history);
+        const blocked = refusalIfObviousOffTopic(lastUser);
         if (blocked) return blocked;
+        const daleux = refusalIfGenderExclusivePartnerRequest(lastUser);
+        if (daleux) return daleux;
 
         const { campusRules } = await getCampusInfo();
 

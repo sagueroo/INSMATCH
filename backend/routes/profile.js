@@ -102,24 +102,31 @@ router.get('/', getCurrentUser, async (req, res) => {
             take: 10,
         });
 
-        const recentMatches = recentMatchesRaw.map((m) => {
-            const isA = m.request_a.user_id === userId;
-            const partner = isA ? m.request_b.user : m.request_a.user;
-            const sport = m.request_a.sport ?? m.request_b.sport;
-            const p = partner;
-            const partnerName = p
-                ? `${p.first_name ?? ''} ${p.last_name ?? ''}`.trim() || '?'
-                : '?';
+        const recentMatches = recentMatchesRaw
+            .map((m) => {
+                try {
+                    const isA = m.request_a?.user_id === userId;
+                    const partner = isA ? m.request_b?.user : m.request_a?.user;
+                    const sport = m.request_a?.sport ?? m.request_b?.sport;
+                    const p = partner;
+                    const partnerName = p
+                        ? `${p.first_name ?? ''} ${p.last_name ?? ''}`.trim() || '?'
+                        : '?';
 
-            return {
-                id: m.id,
-                sport: sport?.name ?? '?',
-                partnerName,
-                date: m.start_time,
-                venue: m.venue?.name ?? null,
-                status: m.status,
-            };
-        });
+                    return {
+                        id: m.id,
+                        sport: sport?.name ?? '?',
+                        partnerName,
+                        date: m.start_time,
+                        venue: m.venue?.name ?? null,
+                        status: m.status,
+                    };
+                } catch (e) {
+                    console.warn(`[profile] match récent ignoré (id=${m?.id}):`, e.message);
+                    return null;
+                }
+            })
+            .filter(Boolean);
 
         // ── RESPONSE ──
         res.json({
