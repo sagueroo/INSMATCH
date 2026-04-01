@@ -1,4 +1,5 @@
 const express = require('express');
+const { randomUUID } = require('crypto');
 const { PrismaClient } = require('@prisma/client');
 const security = require('../utils/security');
 const jwt = require('jsonwebtoken');
@@ -92,30 +93,35 @@ router.post('/register', async (req, res) => {
                 ? String(professor_trigram).trim().toUpperCase()
                 : null;
 
-        // 3. On crée l'utilisateur dans Neon via Prisma
-        const newUser = await prisma.user.create({
-            data: {
-                first_name,
-                last_name,
-                email,
-                password_hash: hashedPassword,
-                user_role: role,
-                professor_trigram: triNormalized,
-                department: role === 'professor' ? '' : department,
-                class_group: role === 'professor' ? '' : class_group,
-            }
-        });
+        const dept = role === 'professor' ? '' : department;
+        const grp = role === 'professor' ? '' : class_group;
+        const id = randomUUID();
 
-        // 4. On renvoie l'utilisateur sans le mot de passe
+        // 3. INSERT SQL paramétré — évite « Unknown argument user_role » si le client Prisma
+        //    sur le serveur a été généré à partir d’un ancien schema.prisma (sans regen).
+        await prisma.$executeRawUnsafe(
+            `INSERT INTO users (id, first_name, last_name, email, password_hash, user_role, professor_trigram, department, class_group, created_at)
+             VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, $8, $9, NOW())`,
+            id,
+            first_name,
+            last_name,
+            email,
+            hashedPassword,
+            role,
+            triNormalized,
+            dept,
+            grp
+        );
+
         const userToReturn = {
-            id: newUser.id,
-            first_name: newUser.first_name,
-            last_name: newUser.last_name,
-            email: newUser.email,
-            department: newUser.department,
-            class_group: newUser.class_group,
-            user_role: newUser.user_role,
-            professor_trigram: newUser.professor_trigram,
+            id,
+            first_name,
+            last_name,
+            email,
+            department: dept,
+            class_group: grp,
+            user_role: role,
+            professor_trigram: triNormalized,
         };
 
         res.status(201).json(userToReturn);
