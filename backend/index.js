@@ -20,11 +20,32 @@ app.use((req, res, next) => {
     next();
 });
 
-// --- CONFIGURATION CORS (Pour accepter le React sur le port 5173) ---
-app.use(cors({
-    origin: ["http://localhost:5173", "http://localhost:5174", "http://localhost:5175", "http://127.0.0.1:5173", "http://127.0.0.1:5174", "http://127.0.0.1:5175"],
-    credentials: true
-}));
+// --- CORS : localhost (Vite) + origines prod (ALLOWED_ORIGINS dans .env, séparées par des virgules) ---
+const defaultCorsOrigins = [
+    'http://localhost:5173',
+    'http://localhost:5174',
+    'http://localhost:5175',
+    'http://127.0.0.1:5173',
+    'http://127.0.0.1:5174',
+    'http://127.0.0.1:5175',
+];
+const extraCorsOrigins = (process.env.ALLOWED_ORIGINS || '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+const corsAllowed = [...new Set([...defaultCorsOrigins, ...extraCorsOrigins])];
+
+app.use(
+    cors({
+        origin(origin, callback) {
+            if (!origin) return callback(null, true);
+            if (corsAllowed.includes(origin)) return callback(null, true);
+            console.warn(`CORS refusé pour origine: ${origin} — ajoute-la dans ALLOWED_ORIGINS (backend .env) si c’est ton front.`);
+            return callback(null, false);
+        },
+        credentials: true,
+    })
+);
 
 // --- MIDDLEWARES ---
 app.use(express.json()); // Permet de lire req.body en JSON (équivalent Pydantic natif)
