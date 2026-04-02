@@ -68,6 +68,7 @@ const Dashboard = ({ onLogout }) => {
   const [selectedCommunityUser, setSelectedCommunityUser] = useState(null);
   const [communityUserProfile, setCommunityUserProfile] = useState(null);
   const [communityUserLoading, setCommunityUserLoading] = useState(false);
+  const [showAllRecentActivity, setShowAllRecentActivity] = useState(false);
   const bottomRef = useRef(null);
 
   const firstName = localStorage.getItem('first_name') || 'Étudiant';
@@ -1574,6 +1575,9 @@ const Dashboard = ({ onLogout }) => {
 
     const { stats, topAthletes, recentActivity } = communityData;
 
+    const isMobileView = typeof window !== 'undefined' ? window.innerWidth < 900 : false;
+    const recentActivityToRender = showAllRecentActivity || !isMobileView ? recentActivity : recentActivity.slice(0, 4);
+
     const rankColors = ['#E30613', '#002157', '#8b5e3c'];
 
     const getLevelStyle = (level) => {
@@ -1760,7 +1764,7 @@ const Dashboard = ({ onLogout }) => {
 
           {/* ── ACTIVITÉ RÉCENTE ── */}
           <div style={{
-            margin: '0 16px calc(92px + env(safe-area-inset-bottom, 0px))', padding: '20px',
+            margin: '0 16px calc(16px + env(safe-area-inset-bottom, 0px))', padding: '20px',
             background: c.surface, borderRadius: '20px',
             border: `1px solid ${c.surfaceBorder}`,
           }}>
@@ -1772,21 +1776,45 @@ const Dashboard = ({ onLogout }) => {
             {recentActivity.length === 0 ? (
               <p style={{ color: c.textMuted, fontSize: '13px' }}>Aucune activité récente.</p>
             ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                {recentActivity.map((activity, i) => (
-                  <div key={i} style={{
-                    padding: '14px 16px', borderRadius: '14px',
-                    background: c.bg, borderLeft: '3px solid #E30613',
-                    border: `1px solid ${c.surfaceBorder}`,
-                  }}>
-                    <p style={{ fontSize: '13px', color: c.text, margin: '0 0 4px', lineHeight: '1.5' }}>
-                      <span style={{ color: '#E30613', fontWeight: '700' }}>{activity.userName}</span>
-                      {' '}{activity.message}
-                    </p>
-                    <p style={{ fontSize: '11px', color: c.textMuted, margin: 0 }}>{timeAgo(activity.date)}</p>
+              <>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  {recentActivityToRender.map((activity, i) => (
+                    <div key={i} style={{
+                      padding: '14px 16px', borderRadius: '14px',
+                      background: c.bg, borderLeft: '3px solid #E30613',
+                      border: `1px solid ${c.surfaceBorder}`,
+                    }}>
+                      <p style={{ fontSize: '13px', color: c.text, margin: '0 0 4px', lineHeight: '1.5' }}>
+                        <span style={{ color: '#E30613', fontWeight: '700' }}>{activity.userName}</span>
+                        {' '}{activity.message}
+                      </p>
+                      <p style={{ fontSize: '11px', color: c.textMuted, margin: 0 }}>{timeAgo(activity.date)}</p>
+                    </div>
+                  ))}
+                </div>
+
+                {isMobileView && !showAllRecentActivity && recentActivity.length > 4 && (
+                  <div style={{ marginTop: '12px' }}>
+                    <button
+                      type="button"
+                      onClick={() => setShowAllRecentActivity(true)}
+                      style={{
+                        width: '100%',
+                        padding: '12px',
+                        borderRadius: '14px',
+                        border: `1.5px solid ${c.cardBorder}`,
+                        background: 'transparent',
+                        color: c.textMuted,
+                        fontWeight: '700',
+                        fontSize: '13px',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      Afficher toute l’activité
+                    </button>
                   </div>
-                ))}
-              </div>
+                )}
+              </>
             )}
           </div>
         </>)}
