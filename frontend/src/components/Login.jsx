@@ -34,8 +34,8 @@ const Login = ({ onLoginSuccess, onGoToRegister }) => {
 
   return (
     <div style={{
-      minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center',
-      background: '#0a0a0a', fontFamily: "'Inter', sans-serif", padding: '20px',
+      flex: 1, width: '100%', minHeight: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
+      background: '#0a0a0a', fontFamily: "'Inter', sans-serif", padding: '20px', overflow: 'auto',
     }}>
       <style>{`
         * { box-sizing: border-box; }

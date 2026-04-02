@@ -80,6 +80,68 @@ function sanitizeTimeConstraints(tc) {
     return undefined;
 }
 
+function normTxt(s) {
+    return String(s || '')
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
+/**
+ * Repère un équipement du campus cité dans le texte (même formulation approximative),
+ * quand le LLM a oublié de remplir venue_name.
+ */
+async function resolveVenueFromFreeText(text) {
+    const raw = String(text || '').trim();
+    if (raw.length < 3) return null;
+
+    const t = normTxt(raw);
+    const venues = await prisma.venue.findMany({
+        where: { is_active: true },
+        orderBy: { name: 'asc' },
+    });
+    if (venues.length === 0) return null;
+
+    const sortedByLen = [...venues].sort((a, b) => normTxt(b.name).length - normTxt(a.name).length);
+
+    for (const v of sortedByLen) {
+        const n = normTxt(v.name);
+        if (n.length >= 4 && t.includes(n)) return v;
+    }
+
+    const placeCtx =
+        /\b(sur le|sur la|sur un|sous le|au |a la |a l'|à la |à l'|terrain|terrains|salle|gymnase|gym|piscine|stade|court|courts|multisport|insa)\b/i.test(
+            raw
+        );
+    if (!placeCtx) return null;
+
+    const rules = [
+        { test: /\bterrain\s+(?:de\s+)?foot(?:ball)?\b|\bfoot(?:ball)?\s+(?:sur\s+)?(?:un\s+)?terrain\b/i, needle: 'football' },
+        { test: /\bterrain\s+(?:de\s+)?rugby\b|\brugby\b.*\bterrain\b/i, needle: 'rugby' },
+        { test: /\bterrains?\s+de\s+tennis\b|\btennis\s+(?:extérieur|exterieur|ext\.)\b|\bcourt[s]?\s+de\s+tennis\b/i, needle: 'tennis' },
+        { test: /\bterrains?\s+de\s+basket\b|\bbasket\s+(?:extérieur|exterieur)\b/i, needle: 'basket' },
+        { test: /\bterrains?\s+de\s+volley\b|\bvolley(?:ball)?\s+(?:extérieur|exterieur)\b/i, needle: 'volley' },
+        { test: /\bterrain\s+multisports?\b|\bmultisports?\b/i, needle: 'multisports' },
+        { test: /\bsalle\s+omnisports?\b|\bomnisports?\s*\(/i, needle: 'omnisports' },
+        { test: /\bgymnase\s+c\b|\bcolette\s+besson\b/i, needle: 'gymnase c' },
+        { test: /\bgymnase\s+b\b|\balain\s+gilles\b/i, needle: 'gymnase b' },
+        { test: /\bpiscine\b/i, needle: 'piscine' },
+        { test: /\bpiste\s+d\s*['']?athl[eé]tisme\b/i, needle: 'athlétisme' },
+    ];
+
+    for (const r of rules) {
+        if (r.test(raw)) {
+            const needle = normTxt(r.needle);
+            const hit = sortedByLen.find((ven) => normTxt(ven.name).includes(needle));
+            if (hit) return hit;
+        }
+    }
+
+    return null;
+}
+
 /**
  * « Tennis » seul → sport Tennis. Ping-pong uniquement si tennis de table / ping-pong / table tennis explicites.
  */
@@ -125,34 +187,56 @@ async function resolveSportForAgent(sport_name) {
     });
 }
 
-async function createMatchRequestTool(sport_name, venue_name, time_slot_notes, currentUser, time_constraints) {
+async function createMatchRequestTool(
+    sport_name,
+    venue_name,
+    time_slot_notes,
+    currentUser,
+    time_constraints,
+    userUtterance = ''
+) {
     try {
         const rawVenue = typeof venue_name === 'string' ? venue_name.trim() : '';
         const noVenue = !rawVenue;
-
-        console.log(`\n⚙️ [JS] Demande : ${sport_name} / ${noVenue ? '(lieu à convenir)' : rawVenue} / ${time_slot_notes}`);
 
         const sport = await resolveSportForAgent(sport_name);
         if (!sport) return JSON.stringify({ success: false, message: `Le sport '${sport_name}' n'existe pas.` });
 
         let venue = null;
+
         if (!noVenue) {
             venue = await prisma.venue.findFirst({
-                where: { name: { contains: rawVenue, mode: "insensitive" } }
+                where: { name: { contains: rawVenue, mode: 'insensitive' } },
             });
-            if (!venue) return JSON.stringify({ success: false, message: `Le terrain '${rawVenue}' n'existe pas.` });
+            if (!venue) {
+                return JSON.stringify({
+                    success: false,
+                    message: `Le lieu « ${rawVenue} » ne correspond à aucun équipement répertorié sur le campus. Utilise le nom exact (comme dans l’app) ou laisse le lieu vide pour « à convenir ».`,
+                });
+            }
+        } else {
+            const scanText = [String(time_slot_notes || ''), String(userUtterance || '')].filter(Boolean).join('\n');
+            const inferred = await resolveVenueFromFreeText(scanText);
+            if (inferred) {
+                venue = inferred;
+            }
+        }
 
+        if (venue) {
             const liaison = await prisma.venueSport.findFirst({
-                where: { venue_id: venue.id, sport_id: sport.id }
+                where: { venue_id: venue.id, sport_id: sport.id },
             });
-
             if (!liaison) {
                 return JSON.stringify({
                     success: false,
-                    message: `INTERDIT : On ne peut pas faire de ${sport.name} au ${venue.name}. Choisis un terrain compatible.`
+                    message: `Tu ne peux pas faire de ${sport.name} au ${venue.name}. Ce lieu n’est pas prévu pour ce sport sur le campus. Choisis un équipement compatible (voir la liste sports ↔ lieux plus haut) ou relance une recherche sans préciser de lieu : on te mettra « lieu à convenir » avec un partenaire.`,
                 });
             }
         }
+
+        console.log(
+            `\n⚙️ [JS] Demande : ${sport_name} / ${venue ? venue.name : '(lieu à convenir)'} / ${time_slot_notes}`
+        );
 
         const constraints = sanitizeTimeConstraints(time_constraints);
 
@@ -186,14 +270,14 @@ async function createMatchRequestTool(sport_name, venue_name, time_slot_notes, c
                 return JSON.stringify({
                     success: true,
                     paired: true,
-                    message: `Un autre joueur cherchait le même sport. Créneau commun trouvé — c’est une équipe : les prochains pourront demander à rejoindre ce groupe. Ouvre « Mes matchs ».`,
+                    message: `Un autre joueur cherchait le même sport collectif. Un créneau commun a été proposé : toi et lui devez l’accepter dans « Mes matchs ». Ensuite le groupe pourra accueillir d’autres joueurs (avec ton accord pour chaque nouveau).`,
                 });
             }
             const place = venue ? ` (${venue.name})` : '';
             return JSON.stringify({
                 success: true,
                 paired: true,
-                message: `Un partenaire cherchait déjà le même sport${place}. Créneau calculé. Ouvre « Mes matchs ».`,
+                message: `Un partenaire cherchait déjà le même sport${place}. Créneau calculé. Ouvre « Mes matchs » pour accepter ou refuser.`,
             });
         }
 
@@ -376,6 +460,53 @@ function getLastUserMessageContent(history) {
     return '';
 }
 
+function normalizeForMatchPhrase(s) {
+    return String(s || '')
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '');
+}
+
+/**
+ * Question « catalogue » / info : quels sports, que puis-je faire — sans intention de lancer une recherche.
+ * Dans ce cas on ne doit JAMAIS appeler create_match_request_tool (le LLM le confond parfois avec « tout créer »).
+ */
+function isSportsCatalogOrCapabilityQuestion(userText) {
+    const t = normalizeForMatchPhrase(userText).replace(/\u2019/g, "'");
+    if (t.length < 6 || t.length > 2000) return false;
+    if (
+        /\b(cherche|recherche|lance|lancer|inscris|inscrire|ouvre une demande|ouvrir une demande|file dattente|mets moi|met moi|ajoute moi|creer une demande|cree une demande|crée une demande)\b/.test(
+            t
+        )
+    ) {
+        return false;
+    }
+    if (
+        /\bquel(le)?s?\s+sports?\b/.test(t) &&
+        /\b(je peux|on peut|tu peux|faire|disponibles?|proposes?|au campus|sur le campus|dans lapp|sur insmatch|ya t il|y a t il)\b/.test(t)
+    ) {
+        return true;
+    }
+    if (/\b(je peux|on peut|tu peux)\s+(faire\s+)?quel(le)?s?\s+sports?\b/.test(t)) return true;
+    if (/\bquel\s+sport\b.*\bje peux\b|\bje peux\b.*\bquel\s+sport\b/.test(t)) return true;
+    if (/\bliste\s+(des\s+)?sports?\b/.test(t)) return true;
+    if (/\bsports?\s+(disponibles?|proposes?|existants?)\b/.test(t)) return true;
+    if (/\bqu'est[- ]?ce que je peux faire\b|\bje peux faire quoi\b/.test(t)) return true;
+    if (/\b(catalogue|offre)\s+(des\s+)?sports?\b/.test(t)) return true;
+    return false;
+}
+
+async function answerSportsCatalogQuestion(userText) {
+    if (!isSportsCatalogOrCapabilityQuestion(userText)) return null;
+    const { campusRules } = await getCampusInfo();
+    const bullet = campusRules.map((line) => `• ${line}`).join('\n');
+    return (
+        `Sur INSMATCH, voici les sports pris en charge (avec terrains / lieux du campus) :\n\n${bullet}\n\n` +
+        `C’était une question **d’information** : je n’ai créé **aucune** demande de match.\n` +
+        `Quand tu voudras vraiment chercher un partenaire, dis-le clairement pour **un** sport, par exemple : « je cherche du tennis » ou « lance une recherche foot ».`
+    );
+}
+
 const OFF_TOPIC_SCOPE_BLOCK = `PÉRIMÈTRE STRICT — TU NE TRAITES QUE L’INSMATCH (sport sur le campus) :
 - Lancer ou préciser une recherche de partenaire / équipe (sports listés dans RÈGLES SPORTS).
 - Consulter l’état de SES recherches et SES matchs (outil get_user_ins_match_context).
@@ -407,7 +538,7 @@ const toolsList = [
         function: {
             name: "create_match_request_tool",
             description:
-                "Crée une recherche partenaire / équipe UNIQUEMENT quand l’utilisateur veut vraiment chercher un partenaire sport sur le campus. Ne JAMAIS appeler pour du code, devoirs, ou sujets hors INSMATCH. Sports collectifs (Basket, Foot…) : si une équipe existe déjà avec un créneau, tu es mis en file pour rejoindre (EDT vérifié sur ce créneau uniquement).",
+                "Crée UNE SEULE recherche partenaire / équipe pour UN SEUL sport, UNIQUEMENT quand l’utilisateur demande explicitement de chercher / lancer une recherche / s’inscrire en file. INTERDIT : questions du type « quels sports je peux faire », « liste des sports », « c’est quoi les sports » — réponds par texte avec RÈGLES SPORTS, sans cet outil. INTERDIT : appeler cet outil en boucle pour plusieurs sports dans la même réponse. Ne JAMAIS appeler pour du code ou devoirs. Sports collectifs : file pour rejoindre une équipe si créneau compatible.",
             parameters: {
                 type: "object",
                 properties: {
@@ -416,7 +547,11 @@ const toolsList = [
                         description:
                             "Sport exact côté appli. « Tennis » seul = tennis (court). Ping-pong / tennis de table uniquement si l’utilisateur dit tennis de table, ping-pong, ping pong ou table tennis (une seule entrée « Ping-pong » en base).",
                     },
-                    venue_name: { type: "string", description: "Terrain (nom du campus) ou vide si lieu à convenir" },
+                    venue_name: {
+                        type: "string",
+                        description:
+                            "Obligatoire dès que l’utilisateur cite un endroit (terrain, salle, gymnase, piscine, « terrain de foot », etc.) : mets le nom du campus le plus proche. Vide UNIQUEMENT si l’utilisateur ne mentionne aucun lieu — dans ce cas la recherche sera « à convenir ». Ne mets jamais le lieu uniquement dans time_slot_notes sans remplir ce champ.",
+                    },
                     time_slot_notes: { type: "string", description: "Sans horaire précis : 'Horaire automatique (Emploi du temps)'" },
                     time_constraints: {
                         type: "object",
@@ -444,6 +579,9 @@ async function chatWithAgent(history, currentUser) {
         const daleux = refusalIfGenderExclusivePartnerRequest(lastUser);
         if (daleux) return daleux;
 
+        const catalogOnlyReply = await answerSportsCatalogQuestion(lastUser);
+        if (catalogOnlyReply) return catalogOnlyReply;
+
         const { campusRules } = await getCampusInfo();
 
         const systemPrompt = `Tu es l'Agent INSMATCH. Tutoiement.
@@ -458,18 +596,24 @@ OUTIL get_user_ins_match_context :
 - Ne invente pas de données : si tu n'es pas sûr, appelle cet outil.
 - HORAIRES : pour chaque entrée de upcoming_matches, utilise UNIQUEMENT le champ creneau_pour_l_utilisateur pour dire l'heure à l'utilisateur (déjà en heure Lyon/Paris). Ne jamais convertir ni réinterpréter une heure UTC/ISO : ce champ est la source de vérité.
 
+QUESTIONS D’INFORMATION (sans création de demande) :
+- Si l’utilisateur demande quels sports existent, ce qu’il peut faire, la liste des sports, « quel sport je peux faire » au sens catalogue : réponds en texte en t’appuyant sur RÈGLES SPORTS. N’appelle JAMAIS create_match_request_tool pour ça. Une question d’info ne crée aucune recherche.
+
 CONFIRMATION avant create_match_request_tool :
 - Si la demande est vague (« du sport », « n'importe quoi »), pose des questions SANS outil jusqu'à avoir au moins le sport (et idéalement lieu ou dispo).
 - Pour une NOUVELLE recherche claire mais qui pourrait être ambiguë ou lourde (ex. plusieurs sports à la fois sans précision), résume en une phrase ce que tu vas créer et demande une confirmation (« oui », « vas-y », « confirme »). N'appelle create_match_request_tool qu'après cette confirmation dans la conversation.
 - Exception : la phrase est déjà précise (sport explicite + au moins lieu OU créneau/disponibilité claire, ex. « cherche foot au terrain X demain aprem ») — tu peux appeler create_match_request_tool directement sans étape de confirmation supplémentaire.
+- Maximum UN appel à create_match_request_tool par tour de réponse (un seul sport à la fois).
 - Après succès de l'outil, rappelle que l'emploi du temps INSAMATCH (onglet Emploi du temps) affiche aussi les matchs confirmés ou proposés.
 
 IMPORTANT (inchangé) :
 - Basket, Foot, sports d'équipe : plusieurs joueurs peuvent former une équipe sur un créneau commun. Un joueur qui arrive après peut être proposé pour rejoindre l'équipe existante (si son EDT a le créneau libre), pas seulement un 1 contre 1.
-- Terrain : si l'étudiant ne précise pas le lieu, appelle l'outil avec venue_name vide.
+- Lieu / terrain :
+  - Si l'étudiant ne cite AUCUN endroit (ex. « je veux faire du ping-pong »), venue_name vide → lieu à convenir dans l'appli.
+  - Dès qu'il cite un lieu, même approximatif (« sur le terrain de foot », « salle omni », « piscine »), tu DOIS remplir venue_name avec le nom d'équipement du campus qui correspond (voir RÈGLES SPORTS). Ne laisse pas venue_name vide dans ce cas : l'outil vérifie la compatibilité sport ↔ lieu et refusera la demande si c'est incohérent (ex. ping-pong sur un terrain de foot).
 - Sans horaire : mets "Horaire automatique (Emploi du temps)" dans time_slot_notes.
 - Contraintes horaires : si l'étudiant dit par ex. « pas avant 15h le week-end », remplis time_constraints avec { "weekend_not_before_hour": 15 } en plus du texte dans time_slot_notes.
-- Ne invente pas de nom de terrain.
+- Ne invente pas de nom de terrain : choisis parmi les terrains listés pour le sport, ou laisse vide.
 - Tennis : « tennis » ou « tennis (court) » → sport_name \"Tennis\". Jamais Ping-pong sauf si l’utilisateur parle explicitement de tennis de table / ping-pong / table tennis → sport_name \"Ping-pong\".`;
 
         const messages = [{ role: "system", content: systemPrompt }, ...history];
@@ -484,6 +628,17 @@ IMPORTANT (inchangé) :
         const assistantMessage = response.choices[0].message;
 
         if (assistantMessage.tool_calls && assistantMessage.tool_calls.length > 0) {
+            const createMatchCalls = assistantMessage.tool_calls.filter(
+                (tc) => tc.function.name === 'create_match_request_tool'
+            );
+            if (createMatchCalls.length > 1) {
+                return (
+                    'Je ne peux créer qu’**une** demande de recherche à la fois, pour **un** sport précis.\n\n' +
+                    'Si tu voulais juste savoir quels sports existent sur INSMATCH, demande « quels sports sont disponibles ? » — je te liste sans rien créer.\n' +
+                    'Pour lancer une vraie recherche : par exemple « je cherche du tennis » ou « lance une recherche basket ».'
+                );
+            }
+
             messages.push(assistantMessage);
 
             for (const toolCall of assistantMessage.tool_calls) {
@@ -496,7 +651,8 @@ IMPORTANT (inchangé) :
                         args.venue_name ?? "",
                         args.time_slot_notes,
                         currentUser,
-                        args.time_constraints
+                        args.time_constraints,
+                        lastUser
                     );
                 } else if (toolCall.function.name === "get_user_ins_match_context") {
                     toolResult = await getUserInsMatchContextTool(currentUser);

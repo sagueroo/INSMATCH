@@ -116,6 +116,49 @@ async function notifyFoundersOfJoinRequest(groupEventId, joinRequestId, applican
   }
 }
 
+function formatSlotLabelFr(start, end) {
+  if (!start || !end) return '';
+  const d = new Date(start);
+  const d2 = new Date(end);
+  const dayPart = new Intl.DateTimeFormat('fr-FR', {
+    weekday: 'short',
+    day: 'numeric',
+    month: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(d);
+  const endPart = new Intl.DateTimeFormat('fr-FR', {
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(d2);
+  return `${dayPart} – ${endPart}`;
+}
+
+/**
+ * Notifie les deux joueurs qu’un créneau commun a été proposé (duel ou 1er binôme collectif).
+ */
+async function notifyBothUsersMatchProposed(reqA, reqB, sportName, slotStart, slotEnd) {
+  const label = formatSlotLabelFr(slotStart, slotEnd);
+  const nameA = `${reqA.user.first_name} ${reqA.user.last_name}`;
+  const nameB = `${reqB.user.first_name} ${reqB.user.last_name}`;
+  await prisma.notification.create({
+    data: {
+      user_id: reqA.user_id,
+      type: 'match_found',
+      title: 'Adversaire / partenaire trouvé',
+      body: `${sportName} — ${nameB}. Créneau proposé : ${label}. Ouvre « Mes matchs » pour accepter ou refuser.`,
+    },
+  });
+  await prisma.notification.create({
+    data: {
+      user_id: reqB.user_id,
+      type: 'match_found',
+      title: 'Adversaire / partenaire trouvé',
+      body: `${sportName} — ${nameA}. Créneau proposé : ${label}. Ouvre « Mes matchs » pour accepter ou refuser.`,
+    },
+  });
+}
+
 /**
  * Joueur suivant : on ne recalcule pas un triple EDT — on teste seulement si le créneau du groupe est libre pour lui.
  */
@@ -235,46 +278,38 @@ async function tryPairCollectiveAfterCreate(newRequest) {
   const reqA = ordered[0];
   const reqB = ordered[1];
   const resolvedVenueId = resolvedVenueIdPair(reqA, reqB);
+  const sportName = newRequest.sport?.name || 'Sport collectif';
 
-  await prisma.$transaction(async (tx) => {
-    const ge = await tx.groupEvent.create({
+  const match = await prisma.$transaction(async (tx) => {
+    const m = await tx.match.create({
       data: {
-        sport_id: newRequest.sport_id,
+        request_a_id: reqA.id,
+        request_b_id: reqB.id,
         venue_id: resolvedVenueId,
         start_time: slot.start,
         end_time: slot.end,
         duration_minutes: durationMin,
-        status: 'recruiting',
+        status: 'pending_acceptance',
+        user_a_accepted: false,
+        user_b_accepted: false,
       },
     });
-
-    await tx.groupEventMember.createMany({
-      data: [
-        { group_event_id: ge.id, user_id: reqA.user_id, is_founder: true },
-        { group_event_id: ge.id, user_id: reqB.user_id, is_founder: true },
-      ],
-    });
-
     await tx.matchRequest.update({
       where: { id: reqA.id },
-      data: {
-        status: 'matched',
-        proposed_time: slot.start,
-        group_event_id: ge.id,
-      },
+      data: { status: 'matched', proposed_time: slot.start },
     });
     await tx.matchRequest.update({
       where: { id: reqB.id },
-      data: {
-        status: 'matched',
-        proposed_time: slot.start,
-        group_event_id: ge.id,
-      },
+      data: { status: 'matched', proposed_time: slot.start },
     });
+    return m;
   });
+
+  await notifyBothUsersMatchProposed(reqA, reqB, sportName, slot.start, slot.end);
 
   return {
     paired: true,
+    matchId: match.id,
     collective: true,
     startTime: slot.start.toISOString(),
     endTime: slot.end.toISOString(),
@@ -356,6 +391,9 @@ async function tryPairDuelAfterCreate(newRequest) {
     return m;
   });
 
+  const sportName = newRequest.sport?.name || 'Sport';
+  await notifyBothUsersMatchProposed(reqA, reqB, sportName, slot.start, slot.end);
+
   return {
     paired: true,
     matchId: match.id,
@@ -433,6 +471,10 @@ async function tryPairAfterCreate(newRequestId) {
     return { paired: false, reason: 'not_found' };
   }
 
+  if (newRequest.status !== 'pending') {
+    return { paired: false, reason: 'not_pending' };
+  }
+
   const mode = newRequest.sport.match_mode || 'duel';
 
   if (mode === 'collective' || mode === 'open_group') {
@@ -446,6 +488,27 @@ async function tryPairAfterCreate(newRequestId) {
   return tryPairDuelAfterCreate(newRequest);
 }
 
+/**
+ * Réessaie l’appariement pour toutes les demandes encore en recherche (évite les cas « passés à la trappe »).
+ */
+async function retryPendingMatchmaking() {
+  const pending = await prisma.matchRequest.findMany({
+    where: { status: 'pending', group_event_id: null },
+    select: { id: true },
+    orderBy: { created_at: 'asc' },
+  });
+  let pairedCount = 0;
+  for (const row of pending) {
+    try {
+      const r = await tryPairAfterCreate(row.id);
+      if (r.paired) pairedCount += 1;
+    } catch (e) {
+      console.error('[retryPendingMatchmaking]', row.id, e.message);
+    }
+  }
+  return { scanned: pending.length, pairedCount };
+}
+
 module.exports = {
   tryPairAfterCreate,
   tryJoinExistingGroupEvent,
@@ -453,4 +516,5 @@ module.exports = {
   resolvedDurationMinutes,
   DEFAULT_DURATION_MIN,
   promoteScheduledDuelMatchToGroupEvent,
+  retryPendingMatchmaking,
 };

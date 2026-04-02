@@ -7,6 +7,25 @@ import { SportIcon } from './SportIcons.jsx';
 import { ConfirmDialog } from './ui/ConfirmDialog.jsx';
 import { EmptyState } from './ui/EmptyState.jsx';
 
+/** Année TC + groupe (remplace l’affichage brut « 3 4 »). */
+function formatTcStudyCaption(department, classGroup) {
+  const dRaw = department != null && String(department).trim() !== '' ? String(department).trim() : '';
+  const gRaw = classGroup != null && String(classGroup).trim() !== '' ? String(classGroup).trim() : '';
+  if (!dRaw && !gRaw) return null;
+  let yearPart = '';
+  if (dRaw) {
+    const onlyDigit = dRaw.replace(/\D/g, '');
+    const n = onlyDigit ? parseInt(onlyDigit, 10) : NaN;
+    if (Number.isFinite(n) && n >= 1 && n <= 6) {
+      yearPart = n === 1 ? '1ʳᵉ année TC' : `${n}ᵉ année TC`;
+    } else {
+      yearPart = /\btc\b/i.test(dRaw) ? dRaw : `${dRaw} TC`;
+    }
+  }
+  const groupPart = gRaw ? `Groupe ${gRaw}` : '';
+  return [yearPart, groupPart].filter(Boolean).join(' · ');
+}
+
 const Dashboard = ({ onLogout }) => {
   const [darkMode, setDarkMode] = useState(true);
   const [activeTab, setActiveTab] = useState('ia');
@@ -18,6 +37,10 @@ const Dashboard = ({ onLogout }) => {
   const [requestsLoading, setRequestsLoading] = useState(true);
   const [selectedRequest, setSelectedRequest] = useState(null);
   const [requestToDelete, setRequestToDelete] = useState(null);
+  const [deleteRequestError, setDeleteRequestError] = useState('');
+  /** Notification match_found : popup globale (tous onglets) */
+  const [matchFoundPopup, setMatchFoundPopup] = useState(null);
+  const dismissedMatchFoundIdsRef = useRef(new Set());
   const [respondLoading, setRespondLoading] = useState(false);
   const [matchCancelLoading, setMatchCancelLoading] = useState(false);
   /** Modale « Annuler le match » : null ou { matchId, sportName, creneau } */
@@ -69,6 +92,7 @@ const Dashboard = ({ onLogout }) => {
   // ─── DELETE REQUEST ───
   const confirmDeleteRequest = async () => {
     if (!requestToDelete) return;
+    setDeleteRequestError('');
     try {
       const token = localStorage.getItem('token');
       await axios.delete(`/requests/${requestToDelete}`, {
@@ -79,8 +103,47 @@ const Dashboard = ({ onLogout }) => {
       fetchRequests();
       fetchProfile();
     } catch (err) {
-      alert('Erreur lors de la suppression.');
+      setDeleteRequestError(err.response?.data?.detail || 'Impossible de supprimer cette demande.');
     }
+  };
+
+  const pollMatchFoundNotifications = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      if (!token) return;
+      const res = await axios.get('/notifications', {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const list = res.data?.notifications || [];
+      const candidate = list.find(
+        (n) =>
+          n.type === 'match_found' &&
+          !n.read &&
+          !dismissedMatchFoundIdsRef.current.has(n.id)
+      );
+      if (!candidate) return;
+      setMatchFoundPopup((prev) => prev || { id: candidate.id, title: candidate.title, body: candidate.body });
+    } catch (err) {
+      if (err.response?.status === 401) onLogout();
+    }
+  };
+
+  const closeMatchFoundPopup = async () => {
+    if (!matchFoundPopup) return;
+    const { id } = matchFoundPopup;
+    dismissedMatchFoundIdsRef.current.add(id);
+    try {
+      const token = localStorage.getItem('token');
+      await axios.patch(
+        `/notifications/${id}/read`,
+        {},
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+    } catch {
+      /* la popup est quand même fermée */
+    }
+    setMatchFoundPopup(null);
+    fetchRequests();
   };
 
   // ─── FETCH COMMUNITY ───
@@ -255,6 +318,9 @@ const Dashboard = ({ onLogout }) => {
     fetchCommunity();
     fetchVenues();
     fetchSchedule();
+    pollMatchFoundNotifications();
+    const notifTimer = setInterval(pollMatchFoundNotifications, 25000);
+    return () => clearInterval(notifTimer);
   }, []);
 
   useEffect(() => {
@@ -458,14 +524,16 @@ const Dashboard = ({ onLogout }) => {
                   <span style={{ fontSize: '12px', color: c.textMuted }}>{req.time}</span>
                 </div>
               </div>
-              {/* Bouton supprimer */}
-              <button onClick={(e) => { e.stopPropagation(); setRequestToDelete(req.id); }} style={{
-                position: 'absolute', top: '10px', right: '10px', background: 'none', border: 'none',
-                cursor: 'pointer', color: c.textMuted, padding: '4px', borderRadius: '6px',
-                transition: 'color 0.2s',
-              }} title="Supprimer">
-                <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /></svg>
-              </button>
+              {/* Annuler la recherche (demande encore en file d’attente, sans proposition de match) */}
+              {req.status === 'pending' && !req.matchId && (
+                <button onClick={(e) => { e.stopPropagation(); setDeleteRequestError(''); setRequestToDelete(req.id); }} style={{
+                  position: 'absolute', top: '10px', right: '10px', background: 'none', border: 'none',
+                  cursor: 'pointer', color: c.textMuted, padding: '4px', borderRadius: '6px',
+                  transition: 'color 0.2s',
+                }} title="Annuler la recherche">
+                  <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /></svg>
+                </button>
+              )}
             </div>
           ))}
         </div>
@@ -827,8 +895,8 @@ const Dashboard = ({ onLogout }) => {
   const renderMatchsDrawer = () => {
     if (!isMatchDrawerOpen) return null;
     return (
-      <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 1200, display: 'flex', background: c.overlay }} onClick={() => setIsMatchDrawerOpen(false)}>
-        <div onClick={e => e.stopPropagation()} style={{ background: c.bg, width: '85%', maxWidth: '380px', height: '100vh', display: 'flex', flexDirection: 'column', boxShadow: '4px 0 24px rgba(0,0,0,0.3)', animation: 'slideInLeft 0.3s cubic-bezier(0.16,1,0.3,1)' }}>
+      <div style={{ position: 'fixed', inset: 0, height: '100dvh', maxHeight: '100dvh', zIndex: 1200, display: 'flex', background: c.overlay }} onClick={() => setIsMatchDrawerOpen(false)}>
+        <div onClick={e => e.stopPropagation()} style={{ background: c.bg, width: '85%', maxWidth: '380px', height: '100dvh', maxHeight: '100dvh', display: 'flex', flexDirection: 'column', boxShadow: '4px 0 24px rgba(0,0,0,0.3)', animation: 'slideInLeft 0.3s cubic-bezier(0.16,1,0.3,1)' }}>
           <div style={{ padding: '16px 20px', borderBottom: `1px solid ${c.surfaceBorder}`, background: c.subHeaderBg, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
               <svg width="22" height="22" fill="none" stroke="#E30613" strokeWidth="2" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" /></svg>
@@ -851,19 +919,41 @@ const Dashboard = ({ onLogout }) => {
               <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
                 {requests.map((req, index) => {
                   const st = statusConfig[req.status] || statusConfig.pending;
+                  const canCancelSearch = req.status === 'pending' && !req.matchId;
                   return (
-                    <div key={req.id} className="card-anim" onClick={() => { setIsMatchDrawerOpen(false); setSelectedRequest(req); }} style={{ background: c.cardBg, border: `1px solid ${c.cardBorder}`, borderRadius: '16px', padding: '18px', cursor: 'pointer', transition: 'transform 0.15s', animationDelay: `${index * 0.05}s` }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', background: st.bgColor, color: st.color, padding: '5px 12px', borderRadius: '20px', fontSize: '12px', fontWeight: '600', border: `1px solid ${st.borderColor}` }}>{st.label}</div>
-                        <span style={{ fontSize: '11px', color: c.textMuted }}>{formatDate(req.createdAt)}</span>
-                      </div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-                        <div style={{ width: '48px', height: '48px', borderRadius: '12px', background: darkMode ? 'rgba(227,6,19,0.05)' : '#fef2f2', border: `1px solid ${darkMode ? 'rgba(227,6,19,0.2)' : '#fecaca'}`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}><SportIcon name={req.sportName} size={24} /></div>
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <h3 style={{ fontSize: '15px', fontWeight: '700', color: c.text, margin: '0 0 4px' }}>{req.sportName}</h3>
-                          <p style={{ fontSize: '12px', color: c.textMuted, margin: 0 }}>{req.location} · {req.time}</p>
+                    <div key={req.id} className="card-anim" style={{ position: 'relative', background: c.cardBg, border: `1px solid ${c.cardBorder}`, borderRadius: '16px', padding: '18px', transition: 'transform 0.15s', animationDelay: `${index * 0.05}s` }}>
+                      {canCancelSearch && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setDeleteRequestError('');
+                            setRequestToDelete(req.id);
+                          }}
+                          style={{
+                            position: 'absolute', top: '12px', right: '12px', zIndex: 2,
+                            background: darkMode ? '#1a2744' : '#f3f4f6', border: 'none', borderRadius: '10px',
+                            width: '36px', height: '36px', cursor: 'pointer', color: c.textMuted,
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          }}
+                          title="Annuler la recherche"
+                        >
+                          <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /></svg>
+                        </button>
+                      )}
+                      <div onClick={() => { setIsMatchDrawerOpen(false); setSelectedRequest(req); }} style={{ cursor: 'pointer' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                          <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', background: st.bgColor, color: st.color, padding: '5px 12px', borderRadius: '20px', fontSize: '12px', fontWeight: '600', border: `1px solid ${st.borderColor}` }}>{st.label}</div>
+                          <span style={{ fontSize: '11px', color: c.textMuted }}>{formatDate(req.createdAt)}</span>
                         </div>
-                        <svg width="18" height="18" fill="none" stroke={c.textMuted} strokeWidth="2" viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6" /></svg>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                          <div style={{ width: '48px', height: '48px', borderRadius: '12px', background: darkMode ? 'rgba(227,6,19,0.05)' : '#fef2f2', border: `1px solid ${darkMode ? 'rgba(227,6,19,0.2)' : '#fecaca'}`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}><SportIcon name={req.sportName} size={24} /></div>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <h3 style={{ fontSize: '15px', fontWeight: '700', color: c.text, margin: '0 0 4px' }}>{req.sportName}</h3>
+                            <p style={{ fontSize: '12px', color: c.textMuted, margin: 0 }}>{req.location} · {req.time}</p>
+                          </div>
+                          <svg width="18" height="18" fill="none" stroke={c.textMuted} strokeWidth="2" viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6" /></svg>
+                        </div>
                       </div>
                     </div>
                   );
@@ -1447,7 +1537,7 @@ const Dashboard = ({ onLogout }) => {
 
             {/* Supprimer la recherche seule (sans match lié) */}
             {!req.matchId && req.status === 'pending' && (
-              <button onClick={() => setRequestToDelete(req.id)} style={{
+              <button onClick={() => { setDeleteRequestError(''); setRequestToDelete(req.id); }} style={{
                 width: '100%', padding: '12px', borderRadius: '12px', marginTop: '10px',
                 border: `1.5px solid #E30613`, background: 'transparent',
                 color: '#E30613', fontWeight: '700', fontSize: '14px', cursor: 'pointer',
@@ -1536,7 +1626,7 @@ const Dashboard = ({ onLogout }) => {
                       <p style={{ fontSize: '12px', color: c.textMuted, margin: 0 }}>
                         {u.userRole === 'professor'
                           ? `Enseignant · ${u.professorTrigram || '—'}`
-                          : `${u.department}ème année · Groupe ${u.classGroup}`}
+                          : (formatTcStudyCaption(u.department, u.classGroup) || 'Étudiant INSA')}
                       </p>
                     </div>
                     {u.mainSport && (
@@ -1601,6 +1691,7 @@ const Dashboard = ({ onLogout }) => {
                   const initial = athlete.firstName.charAt(0).toUpperCase();
                   const lvl = getLevelStyle(athlete.level);
                   const sportTag = getSportTagStyle(athlete.mainSport);
+                  const tcCaption = formatTcStudyCaption(athlete.department, athlete.classGroup);
                   return (
                     <div key={athlete.id} style={{
                       display: 'flex', alignItems: 'center', gap: '12px',
@@ -1632,9 +1723,11 @@ const Dashboard = ({ onLogout }) => {
                         <p style={{ fontSize: '14px', fontWeight: '700', color: c.text, margin: '0 0 2px' }}>
                           {athlete.firstName} {athlete.lastName}
                         </p>
-                        <p style={{ fontSize: '11px', color: c.textMuted, margin: '0 0 4px' }}>
-                          {athlete.department} {athlete.classGroup}
-                        </p>
+                        {tcCaption && (
+                          <p style={{ fontSize: '11px', color: c.textMuted, margin: '0 0 4px', lineHeight: 1.35 }}>
+                            {tcCaption}
+                          </p>
+                        )}
                         <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                           {athlete.mainSport && (
                             <span style={{
@@ -1667,7 +1760,7 @@ const Dashboard = ({ onLogout }) => {
 
           {/* ── ACTIVITÉ RÉCENTE ── */}
           <div style={{
-            margin: '0 16px 100px', padding: '20px',
+            margin: '0 16px calc(92px + env(safe-area-inset-bottom, 0px))', padding: '20px',
             background: c.surface, borderRadius: '20px',
             border: `1px solid ${c.surfaceBorder}`,
           }}>
@@ -1957,7 +2050,7 @@ const Dashboard = ({ onLogout }) => {
 
   // ━━━━━━━━━━━━ RENDER ━━━━━━━━━━━━
   return (
-    <div style={{ width: '100%', height: '100vh', display: 'flex', flexDirection: 'column', fontFamily: "'Inter', sans-serif", background: c.bg, color: c.text, overflow: 'hidden' }}>
+    <div style={{ width: '100%', flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', fontFamily: "'Inter', sans-serif", background: c.bg, color: c.text, overflow: 'hidden' }}>
       <style>{`
         * { box-sizing: border-box; margin: 0; padding: 0; }
         @keyframes blink { 0%,80%,100%{opacity:0} 40%{opacity:1} }
@@ -1981,8 +2074,15 @@ const Dashboard = ({ onLogout }) => {
         }
       `}</style>
 
-      {/* TOP BAR */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 20px', flexShrink: 0, background: c.headerBg, borderBottom: `1px solid ${c.headerBorder}` }}>
+      {/* TOP BAR — safe-area : évite le logo sous encoche / statut bar */}
+      <div style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        paddingLeft: 'max(20px, env(safe-area-inset-left, 0px))',
+        paddingRight: 'max(20px, env(safe-area-inset-right, 0px))',
+        paddingTop: 'calc(14px + env(safe-area-inset-top, 0px))',
+        paddingBottom: '14px',
+        flexShrink: 0, background: c.headerBg, borderBottom: `1px solid ${c.headerBorder}`,
+      }}>
         <div style={{ display: 'flex', alignItems: 'center' }}>
           <img src="/logo.png" alt="INSAMATCH" style={{ height: '40px', objectFit: 'contain' }} />
         </div>
@@ -2020,7 +2120,14 @@ const Dashboard = ({ onLogout }) => {
       </div>
 
       {/* BOTTOM NAV (Mobile) */}
-      <div className="mobile-bottom-nav" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-around', padding: '8px 0 12px', flexShrink: 0, background: c.navBg, borderTop: `1px solid ${c.navBorder}` }}>
+      <div className="mobile-bottom-nav" style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'space-around',
+        paddingTop: 8,
+        paddingBottom: 'calc(12px + env(safe-area-inset-bottom, 0px))',
+        paddingLeft: 'max(0px, env(safe-area-inset-left, 0px))',
+        paddingRight: 'max(0px, env(safe-area-inset-right, 0px))',
+        flexShrink: 0, background: c.navBg, borderTop: `1px solid ${c.navBorder}`,
+      }}>
         {bottomNavItems.map(item => {
           const active = activeTab === item.id;
           return (
@@ -2038,10 +2145,11 @@ const Dashboard = ({ onLogout }) => {
       {renderEditProfileModal()}
       <ConfirmDialog
         open={!!requestToDelete}
-        onClose={() => setRequestToDelete(null)}
+        onClose={() => { setRequestToDelete(null); setDeleteRequestError(''); }}
         onConfirm={confirmDeleteRequest}
-        title="Supprimer la recherche ?"
-        description="Êtes-vous sûr de vouloir supprimer cette recherche de partenaire ? Cette action est irréversible."
+        title="Annuler cette recherche ?"
+        description="Ta demande sera retirée de la file d’attente. Tu pourras en créer une nouvelle plus tard."
+        error={deleteRequestError}
         iconVariant="delete"
         zIndex={3000}
         maxWidth={360}
@@ -2049,6 +2157,52 @@ const Dashboard = ({ onLogout }) => {
         theme={c}
         isDark={darkMode}
       />
+      {matchFoundPopup ? (
+        <div
+          role="presentation"
+          onClick={closeMatchFoundPopup}
+          style={{
+            position: 'fixed', inset: 0, background: c.overlay, zIndex: 4200,
+            display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px',
+            animation: 'fadeIn 0.2s ease',
+          }}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="match-found-title"
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: c.surface, borderRadius: '24px', width: '100%', maxWidth: 400,
+              padding: '24px', border: `1px solid ${c.surfaceBorder}`,
+              boxShadow: '0 24px 80px rgba(0,0,0,0.25)',
+            }}
+          >
+            <div style={{ textAlign: 'center', marginBottom: '16px' }}>
+              <div style={{
+                width: '56px', height: '56px', margin: '0 auto 12px', borderRadius: '50%',
+                background: darkMode ? 'rgba(34,197,94,0.15)' : '#dcfce7',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+              }}>
+                <svg width="28" height="28" fill="none" stroke="#22c55e" strokeWidth="2.2" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M23 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" /></svg>
+              </div>
+              <h2 id="match-found-title" style={{ margin: 0, fontSize: '18px', fontWeight: '800', color: c.text }}>{matchFoundPopup.title}</h2>
+            </div>
+            <p style={{ margin: '0 0 22px', fontSize: '14px', lineHeight: 1.55, color: c.textMuted, textAlign: 'center' }}>{matchFoundPopup.body}</p>
+            <button
+              type="button"
+              onClick={closeMatchFoundPopup}
+              style={{
+                width: '100%', padding: '14px', borderRadius: '14px', border: 'none',
+                background: '#002157', color: 'white', fontWeight: '700', fontSize: '15px', cursor: 'pointer',
+                fontFamily: "'Inter', sans-serif",
+              }}
+            >
+              OK — voir « Mes matchs »
+            </button>
+          </div>
+        </div>
+      ) : null}
       <ConfirmDialog
         open={!!matchCancelConfirm}
         onClose={closeMatchCancelModal}

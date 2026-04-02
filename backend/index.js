@@ -95,6 +95,7 @@ app.get('/', (req, res) => {
 const cron = require('node-cron');
 const { syncAllGroups } = require('./utils/syncTimetables');
 const { processCompletedMatches } = require('./utils/processCompletedMatches');
+const { retryPendingMatchmaking } = require('./utils/matchmaking');
 
 // CRON JOB : Tous les soirs à 03:00 — fenêtre glissante J-1 supprimé / J+7 ajouté
 cron.schedule('0 3 * * *', async () => {
@@ -112,9 +113,24 @@ cron.schedule('*/15 * * * *', async () => {
     }
 });
 
+// Demandes « pending » : nouvel essai d’appariement (créneaux / ordre d’arrivée ratés)
+cron.schedule('*/5 * * * *', async () => {
+    try {
+        const r = await retryPendingMatchmaking();
+        if (r.pairedCount > 0) {
+            console.log(`[matchmaking] scan pending: ${r.scanned} demande(s), ${r.pairedCount} nouveau(x) binôme(s).`);
+        }
+    } catch (e) {
+        console.error('Erreur retryPendingMatchmaking:', e.message);
+    }
+});
+
 // Sync initiale au démarrage du serveur (full sync, sans sliding)
 syncAllGroups().catch(err => console.error('Erreur sync initiale:', err.message));
 processCompletedMatches().catch(err => console.error('Erreur matchs complétés (init):', err.message));
+retryPendingMatchmaking().catch((err) =>
+    console.error('Erreur matchmaking pending (init):', err.message)
+);
 
 // --- LANCEMENT DU SERVEUR ---
 const PORT = process.env.PORT || 8000;
