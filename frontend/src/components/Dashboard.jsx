@@ -1415,7 +1415,13 @@ const Dashboard = ({ onLogout }) => {
               <p style={{ fontSize: '15px', fontWeight: '600', color: c.text, margin: 0 }}>{req.location}</p>
               {/* Mini map */}
               {(() => {
-                const venue = venuesData.find(v => v.name.toLowerCase().includes(req.location.toLowerCase()) || req.location.toLowerCase().includes(v.name.toLowerCase()));
+                const venue = Array.isArray(venuesData)
+                  ? venuesData.find(
+                      (v) =>
+                        v?.name?.toLowerCase().includes(String(req.location || '').toLowerCase()) ||
+                        String(req.location || '').toLowerCase().includes(v?.name?.toLowerCase() || '')
+                    )
+                  : null;
                 if (venue && venue.latitude && venue.longitude) {
                   return (
                     <div style={{ marginTop: '10px', borderRadius: '10px', overflow: 'hidden', height: '120px', border: `1px solid ${c.cardBorder}` }}>
@@ -1573,7 +1579,9 @@ const Dashboard = ({ onLogout }) => {
       );
     }
 
-    const { stats, topAthletes, recentActivity } = communityData;
+    const stats = communityData?.stats || {};
+    const topAthletes = Array.isArray(communityData?.topAthletes) ? communityData.topAthletes : [];
+    const recentActivity = Array.isArray(communityData?.recentActivity) ? communityData.recentActivity : [];
 
     const isMobileView = typeof window !== 'undefined' ? window.innerWidth < 900 : false;
     const recentActivityToRender = showAllRecentActivity || !isMobileView ? recentActivity : recentActivity.slice(0, 4);
@@ -1659,9 +1667,9 @@ const Dashboard = ({ onLogout }) => {
             {/* Stats row */}
             <div style={{ display: 'flex', gap: '10px' }}>
               {[
-                { icon: <svg width="20" height="20" fill="none" stroke="rgba(255,255,255,0.8)" strokeWidth="1.5" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M23 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" /></svg>, value: stats.totalUsers.toLocaleString(), label: 'Étudiants actifs' },
-                { icon: <svg width="20" height="20" fill="none" stroke="rgba(255,255,255,0.8)" strokeWidth="1.5" viewBox="0 0 24 24"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12" /></svg>, value: stats.matchesThisWeek.toLocaleString(), label: 'Matchs cette semaine' },
-                { icon: <svg width="20" height="20" fill="none" stroke="rgba(255,255,255,0.8)" strokeWidth="1.5" viewBox="0 0 24 24"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5C7 4 7 7 7 7" /><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5C17 4 17 7 17 7" /><path d="M4 22h16" /><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z" /></svg>, value: stats.totalSports.toString(), label: 'Sports disponibles' },
+                { icon: <svg width="20" height="20" fill="none" stroke="rgba(255,255,255,0.8)" strokeWidth="1.5" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M23 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" /></svg>, value: (stats.totalUsers ?? 0).toLocaleString(), label: 'Étudiants actifs' },
+                { icon: <svg width="20" height="20" fill="none" stroke="rgba(255,255,255,0.8)" strokeWidth="1.5" viewBox="0 0 24 24"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12" /></svg>, value: (stats.matchesThisWeek ?? 0).toLocaleString(), label: 'Matchs cette semaine' },
+                { icon: <svg width="20" height="20" fill="none" stroke="rgba(255,255,255,0.8)" strokeWidth="1.5" viewBox="0 0 24 24"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5C7 4 7 7 7 7" /><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5C17 4 17 7 17 7" /><path d="M4 22h16" /><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z" /></svg>, value: (stats.totalSports ?? 0).toString(), label: 'Sports disponibles' },
               ].map((s, i) => (
                 <div key={i} style={{
                   flex: 1, background: 'rgba(255,255,255,0.12)', borderRadius: '16px',
@@ -1692,7 +1700,7 @@ const Dashboard = ({ onLogout }) => {
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                 {topAthletes.map((athlete, i) => {
-                  const initial = athlete.firstName.charAt(0).toUpperCase();
+                  const initial = (athlete?.firstName || '?').charAt(0).toUpperCase();
                   const lvl = getLevelStyle(athlete.level);
                   const sportTag = getSportTagStyle(athlete.mainSport);
                   const tcCaption = formatTcStudyCaption(athlete.department, athlete.classGroup);
@@ -1991,28 +1999,10 @@ const Dashboard = ({ onLogout }) => {
             <svg width="20" height="20" fill="none" stroke="#E30613" strokeWidth="2" viewBox="0 0 24 24"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" /><circle cx="12" cy="10" r="3" /></svg>
             <h2 style={{ fontSize: '18px', fontWeight: '700', color: c.text, margin: 0 }}>Plan du Campus</h2>
           </div>
-          <p style={{ color: c.textMuted, fontSize: '13px', margin: '4px 0 0' }}>Disponibilité des installations en temps réel</p>
         </div>
 
         {/* Conteneur de la carte */}
         <div style={{ flex: 1, position: 'relative' }}>
-          {/* Légende flottante */}
-          <div style={{
-            position: 'absolute', top: '16px', right: '16px', zIndex: 1000,
-            background: c.surface, padding: '12px 16px', borderRadius: '12px',
-            boxShadow: '0 4px 12px rgba(0,0,0,0.15)', border: `1px solid ${c.surfaceBorder}`
-          }}>
-            <p style={{ fontSize: '14px', fontWeight: '700', color: c.text, margin: '0 0 10px' }}>Légende</p>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
-              <div style={{ width: '12px', height: '12px', borderRadius: '50%', background: '#D32F2F' }}></div>
-              <span style={{ fontSize: '13px', color: c.text }}>Disponible</span>
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <div style={{ width: '12px', height: '12px', borderRadius: '50%', background: '#9CA3AF' }}></div>
-              <span style={{ fontSize: '13px', color: c.text }}>Occupé</span>
-            </div>
-          </div>
-
           <MapContainer
             center={[45.7842, 4.8805]}
             zoom={16}
@@ -2027,11 +2017,12 @@ const Dashboard = ({ onLogout }) => {
               maxZoom={20}
             />
 
-            {venuesData.map(venue => (
+            {(Array.isArray(venuesData) ? venuesData : []).map(venue => (
               <Marker
                 key={venue.id}
                 position={[venue.latitude, venue.longitude]}
-                icon={venue.available ? iconAvailable : iconOccupied}
+                // Pas d’info de disponibilité implémentée : on n’affiche pas un état disponible/occupé.
+                icon={iconAvailable}
               >
                 <Popup className={darkMode ? 'dark-popup' : ''}>
                   <div style={{ padding: '4px 0' }}>
@@ -2044,9 +2035,6 @@ const Dashboard = ({ onLogout }) => {
                         <strong>Sports:</strong> {venue.sports.join(', ')}
                       </p>
                     )}
-                    <p style={{ margin: 0, fontSize: '12px', fontWeight: '700', color: venue.available ? '#D32F2F' : '#9CA3AF' }}>
-                      {venue.available ? '● Disponible' : '● Occupé'}
-                    </p>
                   </div>
                 </Popup>
               </Marker>
